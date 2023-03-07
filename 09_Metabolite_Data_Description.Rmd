@@ -1,0 +1,553 @@
+---
+title: "NEO BMI-Metabolite Exploring Obs Point Estimate Results"
+author: "David Hughes"
+date: "13/12/2022"
+output: 
+  pdf_document:
+    number_sections: true
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set( echo = TRUE, error = FALSE, warning = FALSE, message = FALSE)
+
+source("LOAD.R")
+
+```
+
+
+## Basic Summary Statistics for each metabolite trait
+
+```{r}
+trait_sum_stats = sapply(traits, function(trait){
+  x = na.omit( mydata[, trait] )
+  ###
+  n = length( na.omit(x))
+  a = mean(x, na.rm = TRUE)
+  # b = median(x, na.rm = TRUE)
+  d = sd(x, na.rm = TRUE)
+  e = var(x, na.rm = TRUE)
+  q = quantile(x, probs = c(0, 0.025, 0.25, 0.5, 0.75, 0.975, 1) , na.rm = TRUE)
+  s = psych::skew(x)
+  k = psych::kurtosi(x)
+  if(length(x)>5000){
+    x = sample(x, 5000)
+  }
+  w = shapiro.test(x)$statistic
+  ##
+  out = c(n, a, d, e, s, k, w, q)
+  names(out) = c("N", "mean", "sd", "var", 
+                 "skew", "kurtosis",
+                 "shapiro_W",
+                 "min", 
+                 "quantile_0.025",
+                 "quantile_0.25",
+                 "quantile_0.5",
+                 "quantile_0.75",
+                 "quantile_0.975", 
+                 "max")
+  return(out)
+})
+
+trait_sum_stats = as.data.frame(t(trait_sum_stats))
+  
+```
+
+
+## add to feature annotation
+
+```{r}
+fdata_out = cbind(study_data$feature_anno, trait_sum_stats)
+fdata_out[1:5,] %>% kable() %>% kableExtra::kable_classic()
+```
+
+## Write feature annotation data to flat text file
+
+```{r}
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+###
+f = paste0(resultsdir, "tables/feature_annotation_sum_stats.txt")
+write.table(fdata_out, file = f, row.names = FALSE, col.names = TRUE, sep = "\t", quote = TRUE)
+```
+
+
+## Mean and quantiles for each metabolite trait by BMI class
+
+```{r}
+## Define BMI cats levels
+bmicats = levels(mydata$bmi_cat)
+### an empty element to store the data
+bmicat_trait_sum_stats = c()
+###
+for(cat in bmicats){
+  for(trait in traits){
+    # BMI cat subset
+    a = which(mydata$bmi_cat == cat)
+    ## Dietary State of trait
+    ds = strsplit(trait, split="_")[[1]][2]
+    if(ds == "f"){ds = "fasting"}
+    if(ds == "p"){ds = "postprandial"}
+    if(ds == "r"){ds = "response"}
+    # N, mean, quantiles
+    n = length( na.omit( mydata[a,trait] ) )
+    m = mean( mydata[a,trait] , na.rm = TRUE)
+    q = quantile( mydata[a,trait] , probs = c(0.025, 0.25, 0.5, 0.75, 0.975) , na.rm = TRUE)
+    ## data out
+    out = c(trait, ds, cat, n, m, q)
+     names(out) = c("trait","dietary_state","BMI_category",
+       "N", "mean", 
+       "quantile_0.025",
+       "quantile_0.25",
+       "quantile_0.5",
+       "quantile_0.75",
+       "quantile_0.975"
+                 )
+     ### add data to data frame
+     bmicat_trait_sum_stats = rbind(bmicat_trait_sum_stats, out)
+  }
+}
+## Define as a data frame
+bmicat_trait_sum_stats = as.data.frame(bmicat_trait_sum_stats)
+for(i in 4:10){bmicat_trait_sum_stats[,i] = as.numeric(bmicat_trait_sum_stats[,i])}
+## Define levels for BMI category
+bmicat_trait_sum_stats$BMI_category = factor(bmicat_trait_sum_stats$BMI_category, levels = bmicats)
+  
+```
+
+
+## add annotation to the bmicat_trait_sum_stats data frames
+
+```{r}
+m = match(bmicat_trait_sum_stats$trait, study_data$feature_anno$ids)
+bmicat_trait_sum_stats = cbind(bmicat_trait_sum_stats, 
+                               study_data$feature_anno[, c("metabolite","class","subclass", "label", "label.no.units") ])
+
+  
+```
+
+
+
+## Define vector of Lipoproteins
+
+```{r}
+lipoproteins = c("xxlvldl","xlvldl","lvldl","mvldl","svldl", "xsvldl", ## VLDL
+      "idl",                                                  ## IDL
+      "lldl","mldl","sldl",                                   ## LDL
+      "xlhdl","lhdl","mhdl", "shdl")                          ## HDL
+```
+
+## Define vector of Lipids suffixes
+
+```{r}
+lipids = c("l","pl","c","ce", "fc","tg")
+names(lipids) = c("total lipids","phospholipids","cholesterol","cholesterol esters","free cholesterol","triglycerides")
+```
+
+## Define vector of Lipid Traits
+
+```{r}
+lipid_traits = c()
+for(i in lipoproteins){
+  for(j in lipids){
+    o = paste0(i, j)
+    o = c(i, j, o)
+    lipid_traits = rbind(lipid_traits, o)
+  }
+}
+## redefine the lipid
+m = match(lipid_traits[,2], lipids)
+lipid_traits[,2] = names(lipids)[m]
+
+colnames(lipid_traits) = c("lipoprotein","lipid","metabolite")
+lipid_traits = as.data.frame(lipid_traits)
+```
+
+
+## Fasting Lipoprotien Summary Stats 
+
+```{r}
+## Make row names a column value
+trait_sum_stats$traits = rownames(trait_sum_stats)
+## fasting values
+k = sapply(lipid_traits[,3], function(x){ which(  trait_sum_stats$traits == paste0(x, "_f"))})
+fasting_lipoprotein_ss = trait_sum_stats[k, c("traits", "mean", "quantile_0.25", "quantile_0.75")]
+
+
+## Define metabolite
+fasting_lipoprotein_ss$metabolites = sapply(fasting_lipoprotein_ss$traits, function(x){
+  strsplit(x, split = "_f")[[1]][1]
+})
+
+## Define lipid and lipoprotein
+m = match(fasting_lipoprotein_ss$metabolite, lipid_traits$metabolite)
+fasting_lipoprotein_ss$lipid = lipid_traits$lipid[m]
+fasting_lipoprotein_ss$lipoprotein = lipid_traits$lipoprotein[m]
+
+## Define factor levels for lipids and lipoproteins
+fasting_lipoprotein_ss$lipoprotein = factor(fasting_lipoprotein_ss$lipoprotein, 
+                                            levels = lipoproteins )
+fasting_lipoprotein_ss$lipid = factor(fasting_lipoprotein_ss$lipid, 
+                                      levels = c("total lipids","cholesterol",
+                                                 "cholesterol esters",
+                                                 "phospholipids","free cholesterol","triglycerides"))
+
+fasting_lipoprotein_ss$dietary_state = "fasting"
+```
+
+
+## Postprandial Lipoprotien Summary Stats 
+
+```{r}
+## Make row names a column value
+trait_sum_stats$traits = rownames(trait_sum_stats)
+## fasting values
+k = sapply(lipid_traits[,3], function(x){ which(  trait_sum_stats$traits == paste0(x, "_p"))})
+postprandial_lipoprotein_ss = trait_sum_stats[k, c("traits", "mean", "quantile_0.25", "quantile_0.75")]
+
+
+## Define metabolite
+postprandial_lipoprotein_ss$metabolites = sapply(postprandial_lipoprotein_ss$traits, function(x){
+  strsplit(x, split = "_p")[[1]][1]
+})
+
+## Define lipid and lipoprotein
+m = match(postprandial_lipoprotein_ss$metabolite, lipid_traits$metabolite)
+postprandial_lipoprotein_ss$lipid = lipid_traits$lipid[m]
+postprandial_lipoprotein_ss$lipoprotein = lipid_traits$lipoprotein[m]
+
+## Define factor levels for lipids and lipoproteins
+postprandial_lipoprotein_ss$lipoprotein = factor(postprandial_lipoprotein_ss$lipoprotein, 
+                                            levels = lipoproteins )
+postprandial_lipoprotein_ss$lipid = factor(postprandial_lipoprotein_ss$lipid, 
+                                      levels = c("total lipids","cholesterol",
+                                                 "cholesterol esters",
+                                                 "phospholipids","free cholesterol","triglycerides"))
+
+postprandial_lipoprotein_ss$dietary_state = "postprandial"
+```
+
+
+
+
+```{r, fig.width = 12, fig.height = 5}
+lipoprotein_ss = rbind(fasting_lipoprotein_ss, postprandial_lipoprotein_ss)
+
+( p = lipoprotein_ss %>% ggplot(aes(x = lipoprotein, y = mean )) +
+  geom_point(aes(color = lipid), size = 3, alpha = 0.6) +
+  geom_line(aes(color = lipid, group = lipid)) +
+  theme_bw() +
+  labs(y = "mean [mmol/l]") +
+  facet_wrap( .~dietary_state ,nrow = 1) +
+  theme(legend.position="bottom") )
+```
+
+
+
+## save fasting lipoproteins beta profile
+
+```{r}
+f = paste0(resultsdir, "figures/mean_lipoprotein_concentrations.pdf")
+pdf(file = f, width = 12, height = 5)
+p
+dev.off()
+```
+
+
+## A T-test for difference between fasting and non-fasting abundance
+
+```{r}
+f_p_ttest = t( sapply(metids, function(id){
+  f = paste0(id, "_f"); f = mydata[, f]
+  p = paste0(id, "_p"); p = mydata[, p]
+  ###########################
+  ### SCALE AND CENTER DATA
+  ###########################
+  l = length(f)
+  d = scale(c(f,p))[,1]
+  f = d[1:l]
+  p = d[c(l+1):length(d)]
+  ##
+  x = t.test( p,f, paired = TRUE)
+  
+  ## T-stat and Pval
+  tstat = c(x$alternative, x$statistic, x$parameter, x$p.value)
+  names(tstat) = c("test","Tstat","df","P")
+  ## mean diff and 95CI
+  mdif = c(x$estimate, x$conf.int[1:2])
+  names(mdif) = c("mean_dif","L_95CI","U_95CI")
+  ## data out
+  out = c(tstat, mdif)
+  return(out)
+}) )
+## define as data frame
+f_p_ttest = as.data.frame(f_p_ttest)
+## set numerics
+for(i in 2:7){ f_p_ttest[,i] = as.numeric(f_p_ttest[,i]) }
+```
+
+
+```{r}
+f = study_data$feature_anno %>% filter(dietary_state == "fasting")
+m = match(rownames(f_p_ttest), f$metabolite)
+f_p_ttest = cbind(f_p_ttest, f[m,c("metabolite","raw.label","class","subclass","label","label.no.units")])
+```
+
+```{r}
+f = paste0(resultsdir, "tables/fasting_postprandial_t_test_scaled_centred.txt")
+write.table(f_p_ttest, file = f, row.names = FALSE, col.names = TRUE, sep = "\t", quote = TRUE)
+```
+
+
+
+## How many metabolites are different between the two dietary states ?
+
+```{r}
+cat(paste0("How many metabolites are different between the two dietary states? \t"))
+sum( f_p_ttest$P < 0.05/nrow(f_p_ttest) )
+
+cat(paste0("How many metabolites are NOT different between the two dietary states? \t"))
+sum( f_p_ttest$P > 0.05/nrow(f_p_ttest) )
+
+```
+
+
+## What are the 14 metabolites that do NOT differ between fasting and postprandial states?
+
+```{r}
+f_p_ttest %>% filter(P > 0.05/nrow(f_p_ttest) ) %>%
+  kable() %>% kableExtra::kable_classic()
+```
+
+## Direction of change
+
+```{r}
+f_p_ttest %>% filter(P< 0.05/229) %>% summarize( pos_count = sum( mean_dif > 0),
+                                                 neg_count = sum( mean_dif < 0) )
+```
+
+
+
+```{r}
+f_p_ttest %>% filter(P< 0.05/229) %>% 
+  group_by(class) %>%
+  summarize( pos_count = sum( mean_dif > 0),
+             neg_count = sum( mean_dif < 0) ) %>% 
+  kable() %>% kableExtra::kable_classic()
+```
+
+## organize by largest mean dif
+
+```{r}
+f_p_ttest %>% arrange(desc(mean_dif)) %>%
+  kable() %>% kableExtra::kable_classic()
+```
+
+
+## organize by smallest mean dif
+
+```{r}
+f_p_ttest %>% arrange( mean_dif ) %>%
+  kable() %>% kableExtra::kable_classic()
+```
+
+## Delta distributions
+
+```{r}
+delta_ss = t( sapply(metids, function(id){
+  f = paste0(id, "_f"); f = mydata[, f]
+  p = paste0(id, "_p"); p = mydata[, p]
+  ##
+  l = length(f)
+  x = scale(c(f,p))
+  f = x[1:l]
+  p = x[(l+1):length(x)]
+  ##
+  delta = p - f
+  m = mean(delta, na.rm = TRUE)
+  q = quantile(delta, probs = c(0, 0.025, 0.25, 0.75, 0.975, 1), na.rm = TRUE )
+  ss = c(id, m,q)
+  names(ss) = c("metabolite","mean","min","quantile_2.5","quantile_25","quantile_75","quantile_97.5","max")
+  return(ss)
+}) )
+
+### define as data frame
+delta_ss = as.data.frame(delta_ss)
+for(i in 2:ncol(delta_ss)){ delta_ss[,i] = as.numeric(delta_ss[,i]) }
+
+### add annotation
+m = match(delta_ss$metabolite, study_data$feature_anno$metabolite)
+delta_ss = cbind(delta_ss, study_data$feature_anno[m, c("class","subclass")] )
+
+## define metabolite factor levels
+delta_ss$metabolite = factor(delta_ss$metabolite, levels = delta_ss$metabolite)
+```
+
+
+```{r, fig.width = 15, fig.height = 5}
+pcol = c( RColorBrewer::brewer.pal(6, "Set1"), RColorBrewer::brewer.pal(8, "Dark2") )[14:1]
+
+
+delta_ss %>% ggplot(aes(x = metabolite, y = mean)) +
+  geom_hline(yintercept = 0, color = "black", linetype = "solid", size = 1.5) +
+  geom_point(aes(color = class) ,alpha = 0.6, size = 1.5) +
+  scale_color_manual(values = pcol) + 
+  geom_errorbar(aes(ymin = quantile_2.5, ymax = quantile_97.5, color = class), linewidth = 0.5) +
+  theme_bw() +
+  labs(y = "delta: postprandial - fasting", x = "metabolite") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 6)) +
+  theme(legend.position = "bottom")
+
+```
+
+
+
+```{r, fig.width = 15, fig.height = 8}
+pcol = c( RColorBrewer::brewer.pal(6, "Set1"), RColorBrewer::brewer.pal(8, "Dark2") )[14:1]
+
+k = c("Lipoprotein subclasses", "Lipoprotein subclasses ratios")
+
+plot1 = delta_ss %>% 
+  filter( !class %in% k ) %>% 
+  ggplot(aes(x = metabolite, y = mean)) +
+  geom_hline(yintercept = 0, color = "black", linetype = "dashed", size = 1.25) +
+  geom_point(aes(color = class) ,alpha = 0.6, size = 1.5) +
+  scale_color_manual(values = pcol) + 
+  geom_errorbar(aes(ymin = quantile_2.5, ymax = quantile_97.5, color = class), linewidth = 0.5) +
+  theme_bw() +
+  labs(y = "delta: postprandial - fasting", x = "metabolite") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 8)) +
+  theme(legend.position = "right") +
+  facet_wrap(.~class, nrow = 1, scales = "free_x") + theme(strip.text.x = element_blank())
+
+##########
+temp = delta_ss %>% filter( class %in% k )
+temp$subclass = gsub(" ratios","", as.character( temp$subclass ) )
+temp$subclass = factor(temp$subclass, 
+                       levels = c("Extremely large VLDL","Very large VLDL", 
+                                  "Large VLDL","Medium VLDL","Small VLDL","Very Small VLDL",
+                                  "IDL",
+                                  "Large LDL","Medium LDL","Small LDL",
+                                  "Very large HDL","Large HDL","Medium HDL","Small HDL") )
+#
+plot2 = temp %>% 
+  ggplot(aes(x = metabolite, y = mean)) +
+  geom_hline(yintercept = 0, color = "black", linetype = "dashed", size = 1.25) +
+  geom_point(aes(color = subclass) ,alpha = 0.6, size = 1.5) +
+  scale_color_manual(values = pcol) + 
+  geom_errorbar(aes(ymin = quantile_2.5, ymax = quantile_97.5, color = subclass), linewidth = 0.5) +
+  theme_bw() +
+  labs(y = "delta: postprandial - fasting", x = "metabolite") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1, size = 8)) +
+  theme(legend.position = "right") +
+  facet_wrap(.~class, ncol = 1, scales = "free_x") 
+
+```
+
+
+```{r, fig.width = 15, fig.height = 12}
+library(patchwork)
+plot1 / plot2 + plot_layout(heights = c(1.3,3))
+
+```
+
+## save delta plot
+
+```{r}
+f = paste0(resultsdir, "figures/scaled_delta_mean_95CI.pdf")
+pdf(file = f, width = 12, height = 13)
+plot1 / plot2 + plot_layout(heights = c(1.3,3))
+dev.off()
+```
+
+
+## Are any metabolites uniformly positive or negative in their delta value across samples?
+
+```{r}
+delta_ss %>% filter(quantile_2.5 > 0 & quantile_97.5 > 0)
+delta_ss %>% filter(quantile_2.5 < 0 & quantile_97.5 < 0)
+```
+
+## Do the simple Delta and deming regression residuals correlated ?
+
+```{r}
+delta_response_cors = sapply(metids, function(id){
+  f = paste0(id, "_f")
+  p = paste0(id, "_p")
+  r = paste0(id, "_r")
+  delta = mydata[, p] - mydata[,f]
+  response = mydata[,r]
+  a = cor.test(delta, response)
+  return(a$estimate)
+})
+mean(delta_re0sponse_cors)
+quantile(delta_response_cors, probs = c(0.025, 0.975))
+```
+
+
+
+
+
+
+
+
+
+## Total lipid concentrations by BMI category
+
+
+
+
+
+```{r, fig.width = 10, fig.height = 17}
+## total lipids
+Ltraits = paste0(lipoproteins, "l_f")
+## make the plot
+p1 = lipid_conc_plot_by_bmi_cat(wdata = mydata, 
+                           trait_vector = Ltraits, 
+                           ylabel = "total lipid (mmol/L)",
+                           scales = "fixed")
+
+## cholesterol
+Ltraits = paste0(lipoproteins, "c_f")
+## make the plot
+p2 = lipid_conc_plot_by_bmi_cat(wdata = mydata, 
+                           trait_vector = Ltraits, 
+                           ylabel = "cholesterol (mmol/L)")
+
+## phospholipids
+Ltraits = paste0(lipoproteins, "pl_f")
+## make the plot
+p3 = lipid_conc_plot_by_bmi_cat(wdata = mydata, 
+                           trait_vector = Ltraits, 
+                           ylabel = "phospholipids (mmol/L)")
+
+## cholesterol esters
+Ltraits = paste0(lipoproteins, "ce_f")
+## make the plot
+p4 = lipid_conc_plot_by_bmi_cat(wdata = mydata, 
+                           trait_vector = Ltraits, 
+                           ylabel = "cholesterol esters (mmol/L)")
+
+## triglycerides
+Ltraits = paste0(lipoproteins, "tg_f")
+## make the plot
+p5 = lipid_conc_plot_by_bmi_cat(wdata = mydata, 
+                           trait_vector = Ltraits, 
+                           ylabel = "triglycerides (mmol/L)")
+
+## free cholesterol
+Ltraits = paste0(lipoproteins, "fc_f")
+## make the plot
+p6 = lipid_conc_plot_by_bmi_cat(wdata = mydata, 
+                           trait_vector = Ltraits, 
+                           ylabel = "free cholesterol (mmol/L)")
+
+
+# ggpubr::ggarrange(p1, p2, ncol = 1)  
+
+library(patchwork)
+p1 / p2 / p3 / p4 / p5 / p6 + plot_layout(guides = 'collect') & theme(legend.position = 'bottom')
+```
+
+
+

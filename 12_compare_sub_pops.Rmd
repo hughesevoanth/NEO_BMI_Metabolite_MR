@@ -1,0 +1,492 @@
+---
+title: "NEO BMI-Metabolite Exploring MR Point Estimate Results"
+author: "David Hughes"
+date: "2/6/2021"
+output: 
+  pdf_document:
+    number_sections: true
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set( echo = TRUE, error = FALSE, warning = FALSE, message = FALSE)
+
+source("LOAD.R")
+
+```
+
+## Load point estimates
+
+```{r}
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+
+f = paste0(resultsdir, "obs_tsls_estimates_Dec12_2022.Rdata")
+load( f)
+
+## long format data
+f = paste0(resultsdir, "obs_tsls_estimates_long_Dec12_2022.Rdata")
+load( file = f)
+
+```
+
+
+## add annotation
+
+```{r}
+## add annotation
+m = match(obs_tsls_est$wNEO$outcome , study_data$feature_anno$new_id)
+obs_tsls_est$wNEO = cbind(obs_tsls_est$wNEO, study_data$feature_anno[m, c("metabolite","dietary_state","raw.label", "class", "subclass")])
+
+obs_tsls_est$wNEO$dietary_state = factor(obs_tsls_est$wNEO$dietary_state, levels = c("response","postprandial","fasting"))
+```
+
+
+## load sensitivity data
+
+```{r}
+## sensitivity results
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "tables/Dec12_2022_wNEO_SENSITIVITY_estimates.txt")
+wNEO_sensitivity = read.table(f, header = TRUE, sep = "\t", as.is = TRUE)
+
+## long format of sensitivity 
+wNEO_sensitivity_long = obsmr_2_longformat(data = wNEO_sensitivity, 
+                               pop_id = "wNEO_sa", 
+                               alpha = 0.05/43, 
+                               sandwich_estimates = FALSE)
+```
+
+## add sensitivity data to list
+
+```{r}
+obs_tsls_est[["wNEO_sa"]] = wNEO_sensitivity
+
+obs_tsls_est_long[["wNEO_sa"]] = wNEO_sensitivity_long
+```
+
+
+```{r}
+names(obs_tsls_est)
+```
+
+
+
+
+## Observational correlation between sample populations
+
+```{r}
+cat(paste0("weighted NEO -v- Leiderdorp\n"))
+cor.test(obs_tsls_est$wNEO$Obs_beta, obs_tsls_est$Leiderdorp$Obs_beta)$estimate
+cat(paste0("weighted NEO -v- Leiden\n"))
+cor.test(obs_tsls_est$wNEO$Obs_beta, obs_tsls_est$Leiden$Obs_beta)$estimate
+cat(paste0("weighted NEO -v- NEO\n"))
+cor.test(obs_tsls_est$wNEO$Obs_beta, obs_tsls_est$NEO$Obs_beta)$estimate
+cat(paste0("Leiderdorp -v- Leiden\n"))
+cor.test(obs_tsls_est$Leiderdorp$Obs_beta, obs_tsls_est$Leiden$Obs_beta)$estimate
+cat(paste0("\nweighted NEO -v- weighted NEO sensitivity analysis\n"))
+cor.test(obs_tsls_est$wNEO$Obs_beta, obs_tsls_est$wNEO_sa$Obs_beta)$estimate
+
+```
+
+
+## MR correlation between sample populations
+
+```{r}
+cat(paste0("weighted NEO -v- Leiderdorp\n"))
+cor.test(obs_tsls_est$wNEO$MR_beta, obs_tsls_est$Leiderdorp$MR_beta)$estimate
+cor.test(obs_tsls_est$wNEO$MR_beta, obs_tsls_est$Leiderdorp$MR_beta)$p.value
+cat(paste0("weighted NEO -v- Leiden\n"))
+cor.test(obs_tsls_est$wNEO$MR_beta, obs_tsls_est$Leiden$MR_beta)$estimate
+cor.test(obs_tsls_est$wNEO$MR_beta, obs_tsls_est$Leiden$MR_beta)$p.value
+cat(paste0("weighted NEO -v- NEO\n"))
+cor.test(obs_tsls_est$wNEO$MR_beta, obs_tsls_est$NEO$MR_beta)$estimate
+cor.test(obs_tsls_est$wNEO$MR_beta, obs_tsls_est$NEO$MR_beta)$p.value
+cat(paste0("Leiderdorp -v- Leiden\n"))
+cor.test(obs_tsls_est$Leiderdorp$MR_beta, obs_tsls_est$Leiden$MR_beta)$estimate
+cor.test(obs_tsls_est$Leiderdorp$MR_beta, obs_tsls_est$Leiden$MR_beta)$p.value
+
+cat(paste0("\nweighted NEO -v- weighted NEO sensitivity analysis\n"))
+cor.test(obs_tsls_est$wNEO$MR_beta, obs_tsls_est$wNEO_sa$MR_beta)$estimate
+cor.test(obs_tsls_est$wNEO$MR_beta, obs_tsls_est$wNEO_sa$MR_beta)$p.value
+```
+
+
+## Comparison of observational estimates between wNEO and Leiderdorp
+
+```{r, fig.width = 12, fig.height = 4}
+m = match( obs_tsls_est$wNEO$outcome, study_data$feature_anno$new_id)
+
+obs_temp = data.frame(outcome = obs_tsls_est$wNEO$outcome,
+                  wNEO = obs_tsls_est$wNEO$Obs_beta,
+                  wNEO_se = obs_tsls_est$wNEO$Obs_se,
+                  wNEO_P = obs_tsls_est$wNEO$Obs_P,
+                  Leiderdorp = obs_tsls_est$Leiderdorp$Obs_beta,
+                  Leiderdorp_se = obs_tsls_est$Leiderdorp$Obs_se,
+                  Leiderdorp_P = obs_tsls_est$Leiderdorp$Obs_P,
+                  NEO = obs_tsls_est$NEO$Obs_beta,
+                  NEO_se = obs_tsls_est$NEO$Obs_se,
+                  NEO_P = obs_tsls_est$NEO$Obs_P,
+                  Leiden = obs_tsls_est$Leiden$Obs_beta,
+                  Leiden_se = obs_tsls_est$Leiden$Obs_se,
+                  Leiden_P = obs_tsls_est$Leiden$Obs_P,
+                  dietary_state = study_data$feature_anno$dietary_state[m],
+                  label = study_data$feature_anno$raw.label[m],
+                  class = study_data$feature_anno$class[m],
+                  subclass = study_data$feature_anno$subclass[m]
+          )
+## add dietary state
+obs_temp$dietary_state = factor(obs_temp$dietary_state, levels = unique(obs_temp$dietary_state)[3:1]  )
+
+#### difference between point estimates wNEO -v- Leiderdorp
+z = t( sapply(1:nrow(obs_temp), function(i){
+  ztest(beta1 = obs_temp$wNEO[i], se1 = obs_temp$wNEO_se[i] , 
+        beta2 = obs_temp$Leiderdorp[i] , se2 = obs_temp$Leiderdorp_se[i] )  
+}) )
+obs_temp$wNEO_Leiderdorp_zP = z[,2]
+w = which( z[,2]< 0.05 )
+q = which( z[,2]< 0.05/nrow(z) )
+obs_temp$wNEO_Leiderdorp_z = "P > 0.05"
+if(length(w)>0){obs_temp$wNEO_Leiderdorp_z[w] = "P < 0.05"}
+if(length(w)>0){obs_temp$wNEO_Leiderdorp_z[q] = "P < 0.05/603"}
+obs_temp$wNEO_Leiderdorp_z = factor(obs_temp$wNEO_Leiderdorp_z, levels = c("P > 0.05","P < 0.05","P < 0.05/603"))
+
+#### difference between point estimates wNEO -v- NEO
+z = t( sapply(1:nrow(obs_temp), function(i){
+  ztest(beta1 = obs_temp$wNEO[i], se1 = obs_temp$wNEO_se[i] , 
+        beta2 = obs_temp$NEO[i] , se2 = obs_temp$NEO[i] )  
+}) )
+obs_temp$wNEO_NEO_zP = z[,2]
+w = which( z[,2]< 0.05 )
+q = which( z[,2]< 0.05/nrow(z) )
+obs_temp$wNEO_NEO_z = "P > 0.05"
+if(length(w)>0){obs_temp$wNEO_NEO_z[w] = "P < 0.05"}
+if(length(w)>0){obs_temp$wNEO_NEO_z[q] = "P < 0.05/603"}
+obs_temp$wNEO_NEO_z = factor(obs_temp$wNEO_NEO_z, levels = c("P > 0.05","P < 0.05","P < 0.05/603"))
+
+#### difference between point estimates wNEO -v- Leiden
+z = t( sapply(1:nrow(obs_temp), function(i){
+  ztest(beta1 = obs_temp$wNEO[i], se1 = obs_temp$wNEO_se[i] , 
+        beta2 = obs_temp$Leiden[i] , se2 = obs_temp$Leiden_se[i] )  
+}) )
+obs_temp$wNEO_Leiden_zP = z[,2]
+w = which( z[,2]< 0.05 )
+q = which( z[,2]< 0.05/nrow(z) )
+obs_temp$wNEO_Leiden_z = "P > 0.05"
+if(length(w)>0){obs_temp$wNEO_Leiden_z[w] = "P < 0.05"}
+if(length(w)>0){obs_temp$wNEO_Leiden_z[q] = "P < 0.05/603"}
+obs_temp$wNEO_Leiden_z = factor(obs_temp$wNEO_Leiden_z, levels = c("P > 0.05","P < 0.05","P < 0.05/603"))
+
+```
+
+
+```{r, fig.width = 12, fig.height = 5}
+### PLOT
+PR = cor.test(obs_temp$wNEO, obs_temp$Leiderdorp)$estimate
+PR = formatC(PR, digits = 3)
+  
+p1 = obs_temp %>% ggplot(aes(x = wNEO, y = Leiderdorp)) +
+  geom_abline(intercept = 0, slope = 1) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_point( aes(color = dietary_state, shape = wNEO_Leiderdorp_z), size = 3, alpha = 0.7) + 
+  geom_smooth(method = "lm", formula = y~x, size = 2,  color = "grey30") +
+  scale_color_brewer(palette="Set1") +
+  scale_shape_manual(values = c( 1, 19, 15), drop = FALSE) +
+  labs(color = "dietary state", shape = "z-test") +
+  theme_bw() +
+  ggrepel::geom_text_repel( data = obs_temp %>% filter(wNEO_Leiderdorp_z != "P > 0.05" & wNEO > Leiderdorp) , 
+                  aes(label=outcome), 
+                  min.segment.length = 0,
+                  box.padding = 0.4,
+                  nudge_x = 0.015,
+                  nudge_y = -0.01) +
+  ggrepel::geom_text_repel( data = obs_temp %>% filter(wNEO_Leiderdorp_z != "P > 0.05" & wNEO < Leiderdorp) , 
+                  aes(label=outcome), 
+                  min.segment.length = 0,
+                  box.padding = 0.4,
+                  nudge_x = -0.015,
+                  nudge_y = 0.01) +
+  annotate("text", x = 0.045, y = -0.1, label = paste0("Pearson's r = ", PR))
+
+###
+PR = cor.test(obs_temp$wNEO, obs_temp$NEO)$estimate
+PR = formatC(PR, digits = 3)
+
+p2 = obs_temp %>% ggplot(aes(x = wNEO, y = NEO)) +
+  geom_abline(intercept = 0, slope = 1) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_point( aes(color = dietary_state, shape = wNEO_NEO_z), size = 3, alpha = 0.7) + 
+  #geom_smooth(method = "lm", formula = y~x, size = 2, aes(color = dietary_state)) +
+  geom_smooth(method = "lm", formula = y~x, size = 2, color = "grey30") +
+  scale_color_brewer(palette="Set1") +
+  scale_shape_manual(values = c(1, 19, 15)) +
+  labs(color = "dietary state", shape = "z-test") +
+  theme_bw() +
+  annotate("text", x = 0.045, y = -0.1, label = paste0("Pearson's r = ", PR))
+
+##
+PR = cor.test(obs_temp$wNEO, obs_temp$Leiden)$estimate
+PR = formatC(PR, digits = 3)
+
+p3 = obs_temp %>% ggplot(aes(x = wNEO, y = Leiden)) +
+  geom_abline(intercept = 0, slope = 1) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_point( aes(color = dietary_state, shape = wNEO_Leiden_z), size = 3, alpha = 0.7) + 
+  #geom_smooth(method = "lm", formula = y~x, size = 2, aes(color = dietary_state)) +
+  geom_smooth(method = "lm", formula = y~x, size = 2, color = "grey30") +
+  scale_color_brewer(palette="Set1") +
+  scale_shape_manual(values = c(1, 19, 15 )) +
+  labs(color = "dietary state", shape = "z-test") +
+  theme_bw() +
+  annotate("text", x = 0.045, y = -0.1, label = paste0("Pearson's r = ", PR))
+
+
+obs_plot = ggpubr::ggarrange(p1, p2, p3, nrow = 1, common.legend = TRUE)
+
+obs_plot
+
+```
+
+## Comparison of MR estimates between wNEO and Leiderdorp
+
+```{r, fig.width = 12, fig.height = 4}
+m = match( obs_tsls_est$wNEO$outcome, study_data$feature_anno$new_id)
+
+temp = data.frame(outcome = obs_tsls_est$wNEO$outcome,
+                  wNEO = obs_tsls_est$wNEO$MR_beta,
+                  wNEO_se = obs_tsls_est$wNEO$MR_se,
+                  wNEO_P = obs_tsls_est$wNEO$MR_P,
+                  Leiderdorp = obs_tsls_est$Leiderdorp$MR_beta,
+                  Leiderdorp_se = obs_tsls_est$Leiderdorp$MR_se,
+                  Leiderdorp_P = obs_tsls_est$Leiderdorp$MR_P,
+                  NEO = obs_tsls_est$NEO$MR_beta,
+                  NEO_se = obs_tsls_est$NEO$MR_se,
+                  NEO_P = obs_tsls_est$NEO$MR_P,
+                  Leiden = obs_tsls_est$Leiden$MR_beta,
+                  Leiden_se = obs_tsls_est$Leiden$MR_se,
+                  Leiden_P = obs_tsls_est$Leiden$MR_P,
+                  dietary_state = study_data$feature_anno$dietary_state[m],
+                  label = study_data$feature_anno$raw.label[m],
+                  class = study_data$feature_anno$class[m],
+                  subclass = study_data$feature_anno$subclass[m]
+          )
+## add dietary state
+temp$dietary_state = factor(temp$dietary_state, levels = unique(temp$dietary_state)[3:1]  )
+
+#### difference between point estimates wNEO -v- Leiderdorp
+z = t( sapply(1:nrow(temp), function(i){
+  ztest(beta1 = temp$wNEO[i], se1 = temp$wNEO_se[i] , 
+        beta2 = temp$Leiderdorp[i] , se2 = temp$Leiderdorp_se[i] )  
+}) )
+temp$wNEO_Leiderdorp_zP = z[,2]
+w = which( z[,2]< 0.05 )
+q = which( z[,2]< 0.05/nrow(z) )
+temp$wNEO_Leiderdorp_z = "P > 0.05"
+if(length(w)>0){temp$wNEO_Leiderdorp_z[w] = "P < 0.05"}
+if(length(w)>0){temp$wNEO_Leiderdorp_z[q] = "P < 0.05/603"}
+temp$wNEO_Leiderdorp_z = factor(temp$wNEO_Leiderdorp_z, levels = c("P > 0.05","P < 0.05","P < 0.05/603"))
+
+#### difference between point estimates wNEO -v- NEO
+z = t( sapply(1:nrow(temp), function(i){
+  ztest(beta1 = temp$wNEO[i], se1 = temp$wNEO_se[i] , 
+        beta2 = temp$NEO[i] , se2 = temp$NEO[i] )  
+}) )
+temp$wNEO_NEO_zP = z[,2]
+w = which( z[,2]< 0.05 )
+q = which( z[,2]< 0.05/nrow(z) )
+temp$wNEO_NEO_z = "P > 0.05"
+if(length(w)>0){temp$wNEO_NEO_z[w] = "P < 0.05"}
+if(length(w)>0){temp$wNEO_NEO_z[q] = "P < 0.05/603"}
+temp$wNEO_NEO_z = factor(temp$wNEO_NEO_z, levels = c("P > 0.05","P < 0.05","P < 0.05/603"))
+
+#### difference between point estimates wNEO -v- Leiden
+z = t( sapply(1:nrow(temp), function(i){
+  ztest(beta1 = temp$wNEO[i], se1 = temp$wNEO_se[i] , 
+        beta2 = temp$Leiden[i] , se2 = temp$Leiden_se[i] )  
+}) )
+temp$wNEO_Leiden_zP = z[,2]
+w = which( z[,2]< 0.05 )
+q = which( z[,2]< 0.05/nrow(z) )
+temp$wNEO_Leiden_z = "P > 0.05"
+if(length(w)>0){temp$wNEO_Leiden_z[w] = "P < 0.05"}
+if(length(w)>0){temp$wNEO_Leiden_z[q] = "P < 0.05/603"}
+temp$wNEO_Leiden_z = factor(temp$wNEO_Leiden_z, levels = c("P > 0.05","P < 0.05","P < 0.05/603"))
+
+```
+
+
+
+
+```{r, fig.width = 12, fig.height = 4}
+### PLOT
+PR = cor.test(temp$wNEO, temp$Leiderdorp)$estimate
+PR = formatC(PR, digits = 3)
+  
+p1 = temp %>% ggplot(aes(x = wNEO, y = Leiderdorp)) +
+  geom_abline(intercept = 0, slope = 1) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_point( aes(color = dietary_state, shape = wNEO_Leiderdorp_z), size = 3, alpha = 0.7) + 
+  geom_smooth(method = "lm", formula = y~x, size = 2,  color = "grey30") +
+  scale_color_brewer(palette="Set1") +
+  scale_shape_manual(values = c( 1, 19, 15), drop = FALSE) +
+  labs(color = "dietary state", shape = "z-test") +
+  theme_bw() +
+  ggrepel::geom_text_repel( data = temp %>% filter(wNEO_Leiderdorp_z != "P > 0.05") , 
+                  aes(label=outcome), 
+                  min.segment.length = 0.2,
+                  box.padding = 0.2) +
+  annotate("text", x = 0.055, y = -0.1, label = paste0("Pearson's r = ", PR))
+
+###
+PR = cor.test(temp$wNEO, temp$NEO)$estimate
+PR = formatC(PR, digits = 3)
+
+p2 = temp %>% ggplot(aes(x = wNEO, y = NEO)) +
+  geom_abline(intercept = 0, slope = 1) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_point( aes(color = dietary_state, shape = wNEO_NEO_z), size = 3, alpha = 0.7) + 
+  #geom_smooth(method = "lm", formula = y~x, size = 2, aes(color = dietary_state)) +
+  geom_smooth(method = "lm", formula = y~x, size = 2, color = "grey30") +
+  scale_color_brewer(palette="Set1") +
+  scale_shape_manual(values = c( 1, 19, 15), drop = FALSE) +
+  labs(color = "dietary state", shape = "z-test") +
+  theme_bw() +
+  annotate("text", x = 0.055, y = -0.1, label = paste0("Pearson's r = ", PR))
+
+##
+PR = cor.test(temp$wNEO, temp$Leiden)$estimate
+PR = formatC(PR, digits = 3)
+
+p3 = temp %>% ggplot(aes(x = wNEO, y = Leiden)) +
+  geom_abline(intercept = 0, slope = 1) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_point( aes(color = dietary_state, shape = wNEO_Leiden_z), size = 3, alpha = 0.7) + 
+  #geom_smooth(method = "lm", formula = y~x, size = 2, aes(color = dietary_state)) +
+  geom_smooth(method = "lm", formula = y~x, size = 2, color = "grey30") +
+  scale_color_brewer(palette="Set1") +
+  scale_shape_manual(values = c( 1, 19, 15), drop = FALSE) +
+  labs(color = "dietary state", shape = "z-test") +
+  theme_bw() +
+  annotate("text", x = 0.055, y = -0.1, label = paste0("Pearson's r = ", PR))
+
+
+p = ggarrange(p1, p2, p3, nrow = 1, common.legend = TRUE)
+
+p
+
+```
+
+```{r, fig.width = 15, fig.height = 10}
+ggarrange(obs_plot, p, nrow = 2,  common.legend = TRUE, labels = c("observational","MR"))
+```
+
+## save correlation scatter plot to file
+
+```{r}
+f = paste0(resultsdir, "figures/sub_pop_obs_mr_cor.pdf")
+pdf(file = f, width = 15, height = 10)
+ggarrange(obs_plot, p, nrow = 2,  common.legend = TRUE, labels = c("observational","MR"))
+dev.off()
+```
+
+## Sensitivity vs wNEO
+
+```{r}
+sa_temp = data.frame(outcome = obs_tsls_est$wNEO$outcome,
+                  wNEO = obs_tsls_est$wNEO$Obs_beta,
+                  wNEO_se = obs_tsls_est$wNEO$Obs_se,
+                  wNEO_P = obs_tsls_est$wNEO$Obs_P,
+                  sa_wNEO = obs_tsls_est$wNEO_sa$Obs_beta,
+                  sa_wNEO_se = obs_tsls_est$wNEO_sa$Obs_se,
+                  sa_wNEO_P = obs_tsls_est$wNEO_sa$Obs_P,
+                  
+                  wNEO_MR = obs_tsls_est$wNEO$MR_beta,
+                  wNEO_MR_se = obs_tsls_est$wNEO$MR_se,
+                  wNEO_MR_P = obs_tsls_est$wNEO$MR_P,
+                  sa_wNEO_MR = obs_tsls_est$wNEO_sa$MR_beta,
+                  sa_wNEO_MR_se = obs_tsls_est$wNEO_sa$MR_se,
+                  sa_wNEO_MR_P = obs_tsls_est$wNEO_sa$MR_P,
+                  
+                  label = obs_tsls_est$wNEO$raw.label,
+                  class = obs_tsls_est$wNEO$class,
+                  subclass = obs_tsls_est$wNEO$subclass,
+                  dietary_state = obs_tsls_est$wNEO$dietary_state
+          )
+
+#### difference between point estimates wNEO -v- Leiderdorp
+z = t( sapply(1:nrow(sa_temp), function(i){
+  ztest(beta1 = sa_temp$wNEO[i], se1 = sa_temp$wNEO_se[i] , 
+        beta2 = sa_temp$sa_wNEO[i] , se2 = sa_temp$sa_wNEO_se[i] )  
+}) )
+sa_temp$wNEO_sa_wNEO_zP = z[,2]
+w = which( z[,2]< 0.05 )
+q = which( z[,2]< 0.05/nrow(z) )
+sa_temp$wNEO_sa_wNEO_zP = "P > 0.05"
+if(length(w)>0){sa_temp$wNEO_sa_wNEO_z[w] = "P < 0.05"}
+if(length(w)>0){sa_temp$wNEO_sa_wNEO_z[q] = "P < 0.05/603"}
+sa_temp$wNEO_sa_wNEO_z = factor(sa_temp$wNEO_sa_wNEO_z, levels = c("P > 0.05","P < 0.05","P < 0.05/603"))
+table(sa_temp$wNEO_sa_wNEO_z)
+
+#### difference between point estimates wNEO -v- Leiderdorp
+z = t( sapply(1:nrow(sa_temp), function(i){
+  ztest(beta1 = sa_temp$wNEO_MR[i], se1 = sa_temp$wNEO_MR_se[i] , 
+        beta2 = sa_temp$sa_wNEO_MR[i] , se2 = sa_temp$sa_wNEO_MR_se[i] )  
+}) )
+sa_temp$wNEO_sa_wNEO_MR_zP = z[,2]
+w = which( z[,2]< 0.05 )
+q = which( z[,2]< 0.05/nrow(z) )
+sa_temp$wNEO_sa_wNEO_MR_zP = "P > 0.05"
+if(length(w)>0){sa_temp$wNEO_sa_wNEO_MR_z[w] = "P < 0.05"}
+if(length(w)>0){sa_temp$wNEO_sa_wNEO_MR_z[q] = "P < 0.05/603"}
+sa_temp$wNEO_sa_wNEO_MR_z = factor(sa_temp$wNEO_sa_wNEO_MR_z, levels = c("P > 0.05","P < 0.05","P < 0.05/603"))
+table(sa_temp$wNEO_sa_wNEO_MR_z)
+```
+
+
+```{r}
+PR = cor.test(sa_temp$wNEO_MR, sa_temp$sa_wNEO_MR)$estimate
+PR = formatC(PR, digits = 3)
+  
+p1 = sa_temp %>% ggplot(aes(x = wNEO_MR, y = sa_wNEO_MR)) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_point( aes(color = dietary_state), size = 3, alpha = 0.7) + 
+  geom_smooth(method = "lm", formula = y~x, size = 2,  color = "grey30") +
+  scale_color_brewer(palette="Set1") +
+  # scale_shape_manual(values = c( 1, 19, 15), drop = FALSE) +
+  # labs(color = "dietary state", shape = "z-test") +
+  labs(color = "dietary state") +
+  theme_bw() +
+  labs(x = "wNEO MR effect estimates", y = "wNEO sensitivity MR effect estimates") +
+  annotate("text", x = 0.055, y = -0.1, label = paste0("Pearson's r = ", PR))
+p1
+```
+
+
+
+## save correlation scatter plot to file
+
+```{r}
+f = paste0(resultsdir, "figures/wNEO_SA_MR_scatterplot.pdf")
+pdf(file = f, width = 6, height = 4)
+p1
+dev.off()
+```
+
+
+
+
+
+
+
+
+
+

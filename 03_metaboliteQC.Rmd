@@ -1,0 +1,167 @@
+---
+title: "QC of metabolite data"
+author: "David Hughes"
+date: "1/9/2022"
+output: 
+  pdf_document:
+    number_sections: true
+---
+
+This Rmd file will identify for each metabolite and metabolite pair (fasting & postprandial), outliers in the distribution and turn them into NAs.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(fig.width = 4, fig.height = 4, echo = TRUE, error = FALSE, warning = FALSE, message = FALSE)
+
+library(tidyverse)
+library(quantreg)
+# library(patchwork)
+```
+
+
+## Load the data
+
+```{r}
+#########################
+### LOAD Data
+#########################
+### parameter file
+pfile = "parameters/pfile.txt"
+par_data = read.table(pfile, header = FALSE, sep = "=", as.is = TRUE)
+
+## load study R data object
+cat(paste0("Load the study data Rdata file\n"))
+w = grep("data_dir", par_data[,1])
+f = paste0(par_data[w,2], "processed/my_working_QCd_study_data.Rdata" )
+load(f)
+
+## Define mydata: the working data object
+cat(paste0("Define mydata working data frame\n"))
+mydata = study_data$working_data
+
+```
+
+
+# 'mydata' is my working study data set
+
+## Perform metabolite quality control
+
+1. ensure zero values are removed (turned to NA)
+2. for each feature identify values that are 10 IQR distances from the median and remove (turn to NA)
+3. In a metabolite paired, fasting - postprandial framework, estimate a simple euclidean delta and identify values that are 5 IQR distances from the median and remove (turn to NA)
+
+## Define a vector of all of the trait names and a vector of all of the metabolite IDs
+
+```{r}
+metids = study_data$metids
+traits = study_data$traits
+```
+
+## Remove outlier samples observed in at each trait.
+
+```{r}
+## Load function
+source("functions/id_outliers.R")
+##
+outlier_count = c()
+##
+for(trait in traits){
+  ## turn 0 values into NA
+  zerovals = which(mydata[, trait] == 0)
+  if(length(zerovals)>0){
+    mydata[zerovals, trait] = NA
+  }
+  ## Identify outliers
+  outliers = id_outliers( mydata[, trait], 
+                          outlier_method = "iqr", 
+                          outlier_cutoff = 10 )
+  ## Outlier Counter
+  outlier_count[trait] = length(outliers)
+  
+  ## turn outliers into NA
+  if(length(outliers)>0){
+    mydata[outliers, trait] = NA
+  }
+}
+
+#####
+```
+
+## How many extreme outliers did we identify and turn into NA?
+
+```{r}
+summary(outlier_count)
+```
+
+```{r}
+table(outlier_count)
+```
+## traits ranked by the number of extreme outliers identified and turned into NA.
+
+```{r}
+sort(outlier_count, decreasing = TRUE)[1:40]
+```
+
+
+## Remove outlier samples at trait pairs (fasting -v- postprandial)
+
+```{r}
+paired_outlier_count = c()
+###
+for(metid in metids){
+  ## define the fasting and postprandial states of the metid
+  fasting = paste0(metid, "_f")
+  postprandial = paste0(metid, "_p")
+  
+  ## Estimate delta
+  xydelta = mydata[, postprandial] - mydata[, fasting]
+  
+  ## Identify the extreme outliers
+  xydelta_outliers = id_outliers( xydelta,
+                                outlier_method = "iqr", 
+                                outlier_cutoff = 5)
+  
+  ## Outlier Counter
+  paired_outlier_count[metid] = length(xydelta_outliers)
+  
+  ## Turn any outliers into NA
+  if(length(xydelta_outliers)>0){
+     mydata[xydelta_outliers, fasting] = NA
+     mydata[xydelta_outliers, postprandial] = NA
+    }
+    
+}
+
+```
+
+
+## How many extreme outliers did we identify and turn into NA?
+
+```{r}
+summary(paired_outlier_count)
+```
+
+```{r}
+table(paired_outlier_count)
+```
+## traits ranked by the number of extreme outliers identified and turned into NA.
+
+```{r}
+sort(paired_outlier_count, decreasing = TRUE)[1:40]
+```
+
+
+```{r}
+study_data$working_data = mydata
+```
+
+
+## Write study_data R object to file
+
+```{r}
+w = grep("data_dir", par_data[,1])
+f = paste0(par_data[w,2], "processed/my_working_QCd_study_data_v1.Rdata" )
+save(study_data, file = f)
+```
+
+
+

@@ -1,0 +1,688 @@
+---
+title: "NEO BMI-Metabolite covariables correlations"
+author: "David Hughes"
+date: "2/6/2021"
+output: 
+  pdf_document:
+    number_sections: true
+---
+
+This report will evaluate the correlation between BMI & BMI-PGS and all study covariables
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set( echo = FALSE, error = FALSE, warning = FALSE, message = FALSE)
+
+source("LOAD.R")
+
+```
+
+
+## Correlation structure among these covariables
+
+## How many unique covariables are there ?
+
+## estimate covariables cormat
+
+```{r, fig.width = 12, fig.height = 6}
+library(NILC)
+
+########################
+## define working data set
+########################
+wdata = mydata[, covariables ]
+
+########################
+## Estimate correlations
+########################
+## NILC function
+# cormat = Test_DF_Correlations( wdata )
+## modified function
+source("functions/cormat_nf.R")
+cormat = cormat_nf( wdata )
+
+## Add Names
+rownames(cormat$RhoMat) = colnames(wdata)
+colnames(cormat$RhoMat) = colnames(wdata)
+
+### abs(R)
+dmat = as.dist( 1-abs(cormat$RhoMat) )
+
+## R^2 distances
+# dmat = as.dist( 1 - (cormat$RhoMat)^2 )
+
+## estimate tree
+nj = hclust(dmat, method = "complete")
+```
+
+### run a tree cut 
+
+```{r}
+## Run Tree cut
+cat(paste0("tree cut height 0.5\n") )
+k = cutree(nj, h = 0.5)
+length( table(k) ) 
+
+cat(paste0("\ntree cut height 0.8\n") )
+k = cutree(nj, h = 0.8)
+length( table(k) ) 
+
+```
+
+```{r}
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "figures/covariable_dendrogram.pdf")
+####
+pdf(f, width = 15, height = 6)
+plot(nj, hang = -1, xlab = "cut height 0.5, Me = 54; cut height 0.8, Me = 37", sub = "", title = "covariable heirchical clustering")
+abline(h = 0.5, col = "red", lwd = 2)
+abline(h = 0.8, col = "blue", lwd = 2)
+dev.off()
+
+```
+
+
+```{r, fig.width = 15, fig.height = 6}
+plot(nj, hang = -1, xlab = "cut height 0.5, Me = 54; cut height 0.8, Me = 37", sub = "", title = "covariable heirchical clustering")
+abline(h = 0.5, col = "red", lwd = 2)
+abline(h = 0.8, col = "blue", lwd = 2)
+```
+
+
+# Correlations with possible confounders
+
+## Correlation among possible confounders and BMI, BMI-GRS, and d.hat
+
+
+```{r, echo = FALSE}
+################################
+##  Weighted NEO sample
+################################
+wNEO_BMI = covariate_lms(datain = mydata, dependent = "bmi", 
+                        covariates = covariables[-c(5)], 
+                        weights = mydata$pweight)
+wNEO_BMI$sample = "wNEO"
+
+wNEO_PGS = covariate_lms(datain = mydata, dependent = "Yengo_Weighted_GRS", 
+                        covariates = covariables[-c(5)],
+                        weights = mydata$pweight)
+wNEO_PGS$sample = "wNEO"
+
+################################
+##   NEO sample
+################################
+NEO_BMI = covariate_lms(datain = mydata, dependent = "bmi", 
+                        covariates = covariables[-c(5)] )
+NEO_BMI$sample = "NEO"
+
+NEO_PGS = covariate_lms(datain = mydata, dependent = "Yengo_Weighted_GRS", 
+                        covariates = covariables[-c(5)] )
+NEO_PGS$sample = "NEO"
+
+################################
+##  Leiderdrop sub-sample
+################################
+w = which( mydata$subpop == "Leiderdorp")
+Leiderdorp_BMI = covariate_lms(datain = mydata[w, ], 
+                               dependent = "bmi", 
+                               covariates = covariables[-c(1,5)])
+Leiderdorp_BMI$sample = "Leiderdorp"
+
+Leiderdorp_PGS = covariate_lms(datain = mydata[w, ], 
+                               dependent = "Yengo_Weighted_GRS", 
+                               covariates = covariables[-c(1,5)])
+Leiderdorp_PGS$sample = "Leiderdorp"
+
+################################
+##  Leiden
+################################
+w = which( mydata$subpop == "Leiden")
+Leiden_BMI = covariate_lms(datain = mydata[w, ], 
+                          dependent = "bmi", 
+                          covariates = covariables[-c(1,5)])
+Leiden_BMI$sample = "Leiden"
+
+Leiden_PGS = covariate_lms(datain = mydata[w, ], 
+                             dependent = "Yengo_Weighted_GRS", 
+                             covariates = covariables[-c(1,5)])
+Leiden_PGS$sample = "Leiden"
+
+
+#######################
+## Combine the data
+#######################
+confounders_cor = rbind(wNEO_BMI, wNEO_PGS, 
+                        Leiderdorp_BMI, Leiderdorp_PGS,
+                        NEO_BMI, NEO_PGS,
+                        Leiden_BMI, Leiden_PGS)
+
+```
+
+```{r}
+
+w = grep("results_dir", par_data[,1])
+f = paste0(par_data[w,2], "tables/Dec13_2022_BMI_GRS_covariate_cors.txt")
+write.table(confounders_cor, file = f, 
+             row.names = TRUE, col.names = TRUE, sep = "\t", quote = FALSE)
+
+```
+
+
+```{r}
+### Read in data written to file
+# confounders_cor = read.table(f, header = TRUE, sep = "\t", as.is = TRUE)
+```
+
+
+
+## what is BMI correlated with in the wNEO sample?
+
+```{r}
+wNEO_BMI = confounders_cor %>% filter(sample == "wNEO", dependent == "bmi") %>% arrange(pvalue)
+
+## add categories to wNEO_BMI
+m = match(wNEO_BMI$covariate, study_data$covariate_anno$new_names)
+wNEO_BMI$category = study_data$covariate_anno$category[m]
+##
+cat(paste0("nominally associated count\n"))
+w = which( wNEO_BMI$pvalue <= 0.05  )
+length(w)
+##
+cat(paste0("\nassociated count\n"))
+q = which( wNEO_BMI$pvalue <= ( 0.05/54 ) )
+length(q)
+##
+cat(paste0("\nEta-squared summary across all tested variables\n"))
+summary(wNEO_BMI$etasq)
+###
+cat(paste0("\nvariables associated with BMI\n"))
+wNEO_BMI$covariate[q]
+```
+
+```{r}
+
+```
+
+
+
+```{r}
+temp = wNEO_BMI[q,] %>% arrange(desc(etasq))
+temp$covariate = factor(temp$covariate , levels = temp$covariate[nrow(temp):1] )
+### ORDER Category by Mean etasq
+od = temp %>% group_by(category) %>% summarize(mean = mean(etasq)) %>% arrange(desc(mean))
+o = od$category
+temp$category = factor(temp$category, levels = o)
+##
+od %>% kable() %>% kableExtra::kable_classic()
+```
+
+```{r}
+wNEO_BMI %>% filter(category %in% c("smoking", "education", "income") ) %>% 
+  kable() %>% 
+  kableExtra::kable_classic()
+```
+
+
+
+
+```{r, fig.width = 8, fig.height = 15}
+### Color Scheme
+pcol = c( RColorBrewer::brewer.pal(11, "Set1"), wesanderson::wes_palette(name = "Rushmore1", n = 5) )
+###
+PlotA = temp %>% ggplot( aes(x = covariate, y = etasq) ) +
+  geom_bar(stat = "identity", aes(fill = category) ) +
+  scale_fill_manual(values = pcol) +
+  coord_flip() +
+  labs(y = "variance explained", x = "covariable") +
+  theme_bw()
+
+PlotA
+```
+
+
+## PLOT PDF TO FILE
+
+```{r}
+w = grep("results_dir", par_data[,1])
+f = paste0(par_data[w,2], "figures/wNEO_BMI_covariable_etasq.pdf")
+pdf(f, width = 8, height = 15)
+PlotA
+dev.off()
+
+
+```
+
+
+## what is PGS correlated with in the wNEO sample?
+
+```{r}
+wNEO_PGS = confounders_cor %>% filter(sample == "wNEO", dependent == "Yengo_Weighted_GRS") %>% arrange(pvalue)
+## add categories to wNEO_BMI
+m = match(wNEO_PGS$covariate, study_data$covariate_anno$new_names)
+wNEO_PGS$category = study_data$covariate_anno$category[m]
+###
+cat(paste0("nominally associated count\n"))
+w = which( wNEO_PGS$pvalue <= 0.05  )
+length(w)
+##
+cat(paste0("\nassociated count\n"))
+q = which( wNEO_PGS$pvalue <= ( 0.05/54 ) )
+length(q)
+##
+cat(paste0("\nEta-squared summary across all tested variables\n"))
+summary(wNEO_PGS$etasq)
+###
+cat(paste0("\nvariables associated with PGS\n"))
+wNEO_PGS$covariate[q]
+```
+
+
+
+```{r}
+temp = wNEO_PGS[q,] %>% arrange(desc(etasq))
+temp$covariate = factor(temp$covariate , levels = temp$covariate[nrow(temp):1] )
+### ORDER Category by Mean etasq
+od = temp %>% group_by(category) %>% summarize(mean = mean(etasq)) %>% arrange(desc(mean))
+o = od$category
+temp$category = factor(temp$category, levels = o)
+##
+od %>% 
+  kable() %>% 
+  kableExtra::kable_classic()
+```
+
+
+```{r, fig.width = 8, fig.height = 6}
+pcol = RColorBrewer::brewer.pal(8, "Set1")
+###
+PlotA = temp %>% ggplot( aes(x = covariate, y = etasq) ) +
+  geom_bar(stat = "identity", aes(fill = category)) + 
+  scale_fill_manual(values = pcol) +
+  coord_flip() +
+  labs(y = "variance explained", x = "covariable") +
+  theme_bw()
+
+PlotA
+```
+
+
+## PLOT PDF TO FILE
+
+```{r}
+w = grep("results_dir", par_data[,1])
+f = paste0(par_data[w,2], "figures/wNEO_PGS_covariable_etasq.pdf")
+pdf(f, width = 8, height = 6)
+PlotA
+dev.off()
+
+
+```
+
+
+
+```{r edit_confounder_cors, echo = FALSE}
+########################################################################
+### Set those P values that are 0, 
+###   i.e. those that could not be estimated to the smallest value observed
+########################################################################
+w = which( confounders_cor$pvalue == 0)
+if(length(w)>0){
+  confounders_cor$pvalue[w] = min( confounders_cor$pvalue[-w])  
+}
+
+####################################
+## Set those traits with a P larger 
+## than a BF Pvalue to 0
+####################################
+w = which(confounders_cor$pvalue > 0.05/54 ) ## 54 determined by tree cut above
+if(length(w)>0){ confounders_cor$pvalue[w] = 0 }
+
+##############################
+## Redefine dependent labels
+##############################
+w = which(confounders_cor$dependent == "bmi")
+confounders_cor$dependent[w] = "BMI"
+
+w = which(confounders_cor$dependent == "Yengo_Weighted_GRS")
+confounders_cor$dependent[w] = "PGS"
+
+```
+
+
+```{r confounder_raster_bmi, fig.width = 15, fig.height = 6}
+##################
+## Plot colors
+##################
+# pcol =  wesanderson::wes_palette("Darjeeling2", 5 , type = "discrete")
+pcol =  wesanderson::wes_palette("Zissou1", 5, type = "discrete")
+# pcol =  wesanderson::wes_palette("BottleRocket2", 15, type = "continuous")
+
+
+### Order by BMI wNEO etasq
+w = unlist( confounders_cor %>% filter(dependent == "BMI" & sample == "wNEO") %>% summarize(order(etasq, decreasing = TRUE)) )
+trait_order = confounders_cor$covariate[w]
+confounders_cor$covariate = factor( confounders_cor$covariate, levels = trait_order)
+
+## Define Sample levels
+confounders_cor$sample = factor(confounders_cor$sample, levels = c("wNEO","Leiderdorp","NEO","Leiden"))
+
+###
+PlotA = confounders_cor %>% ggplot( aes(y = dependent, x = covariate) ) +
+  geom_tile(aes(fill = etasq)) +
+  scale_fill_gradient2(mid = "white" , low = pcol[4], high = pcol[1], midpoint = 0.002   ) +
+  theme(axis.text.x = element_text(angle = 90)) +
+  geom_point(aes(color = -log10(pvalue) , size = -log10(pvalue) ) , shape = 19 ) +
+  scale_size(range = c(1, 8), breaks = c(3, 5, 10, 20, 50, 200), labels =c("3", "5", "10", "20", "50", "200") ) +
+  scale_color_gradient(low = "pink", high = "red") + 
+  labs(color = "-log10(P)", size = "-log10(P)", y = "") +
+  theme(legend.position="bottom") +
+  facet_wrap(.~sample, nrow = 4)
+
+
+PlotA
+
+
+```
+
+## PLOT PDF TO FILE
+
+```{r}
+w = grep("results_dir", par_data[,1])
+f = paste0(par_data[w,2], "figures/PGS_covariate_EtaSq.pdf")
+pdf(f, width = 9, height = 6)
+PlotA
+dev.off()
+
+
+```
+
+```{r confounder_raster_bmi, fig.width = 10, fig.height = 20}
+##################
+## Plot colors
+##################
+# pcol =  wesanderson::wes_palette("Darjeeling2", 5 , type = "discrete")
+pcol =  wesanderson::wes_palette("Zissou1", 5, type = "discrete")
+# pcol =  wesanderson::wes_palette("BottleRocket2", 15, type = "continuous")
+
+
+### Order by BMI wNEO etasq
+w = unlist( confounders_cor %>% filter(dependent == "BMI" & sample == "wNEO") %>% summarize(order(etasq, decreasing = TRUE)) )
+trait_order = confounders_cor$covariate[w]
+confounders_cor$covariate = factor( confounders_cor$covariate, levels = trait_order[length(trait_order):1])
+
+## Define Sample levels
+confounders_cor$sample = factor(confounders_cor$sample, levels = c("wNEO","Leiderdorp","NEO","Leiden"))
+
+###
+PlotA = confounders_cor %>% ggplot( aes(y = dependent, x = covariate) ) +
+  geom_tile(aes(fill = etasq)) +
+  scale_fill_gradient2(mid = "white" , low = pcol[4], high = pcol[1], midpoint = 0.002   ) +
+  theme(axis.text.x = element_text(angle = 90)) +
+  # geom_point(aes(color = -log10(pvalue) , size = -log10(pvalue) ) , shape = 19 ) +
+  geom_point(aes( size = -log10(pvalue) ) , shape = 19, color = "red" ) +
+  scale_size(range = c(1, 8), breaks = c(3, 5, 10, 20, 50, 200), labels =c("3", "5", "10", "20", "50", "200") ) +
+  scale_color_gradient(low = "pink", high = "red") + 
+  geom_text(aes(label = round(etasq*100, d = 2)), nudge_y = 0.01, size = 4, color = "grey20") +
+  labs(color = "-log10(P)", size = "-log10(P)", y = "") +
+  theme(legend.position="bottom") +
+  coord_flip() +
+  facet_wrap(.~sample, ncol = 4)
+
+
+PlotA
+
+
+```
+
+
+```{r}
+w = grep("results_dir", par_data[,1])
+f = paste0(par_data[w,2], "figures/PGS_covariate_EtaSq_flip.pdf")
+pdf(f, width = 10, height = 20)
+PlotA
+dev.off()
+
+
+```
+
+
+## Plot only those covariates associated with PGS in wNEO
+
+```{r confounder_raster_bmi_v2, fig.width = 8, fig.height = 5}
+temp = confounders_cor %>% 
+  filter( sample == "wNEO" & dependent == "PGS" & pvalue < 0.05/54 & pvalue != 0 ) 
+
+covars2keep = temp$covariate
+
+confounders_cor_v2 = confounders_cor %>% filter(covariate %in% covars2keep & dependent == "PGS")
+#############
+### Order by PGS wNEO etasq
+w = unlist( confounders_cor_v2 %>% filter(dependent == "PGS" & sample == "wNEO") %>% summarize(order(pvalue, decreasing = FALSE)) )
+trait_order = as.character( confounders_cor_v2$covariate[w] )
+confounders_cor_v2$covariate = factor( confounders_cor_v2$covariate, levels = trait_order)
+
+#############
+pcol =  wesanderson::wes_palette("Zissou1", 5, type = "discrete")
+
+PlotA = confounders_cor_v2 %>% ggplot( aes(y = dependent, x = covariate) ) +
+  geom_tile(aes(fill = etasq)) +
+  scale_fill_gradient2(mid = "white" , low = pcol[4], high = pcol[1], midpoint = 0.002   ) +
+  theme(axis.text.x = element_text(angle = 90)) +
+  geom_point(aes(color = -log10(pvalue) , size = -log10(pvalue) ) , shape = 19 ) +
+  scale_size(range = c(1, 8), breaks = c(3, 5, 10, 20, 50, 200), labels =c("3", "5", "10", "20", "50", "200") ) +
+  scale_color_gradient(low = "pink", high = "red") + 
+  labs(color = "-log10(P)", size = "-log10(P)", y = "") +
+  theme(legend.position="bottom") +
+  facet_wrap(.~sample, nrow = 4)
+
+
+PlotA
+
+```
+
+```{r, fig.width = 10, fig.height = 8}
+temp = confounders_cor %>% 
+  filter( sample == "wNEO" & dependent == "PGS" & pvalue < 0.05/54 & pvalue != 0 ) 
+
+covars2keep = temp$covariate
+
+confounders_cor_v2 = confounders_cor %>% filter(covariate %in% covars2keep & dependent == "PGS")
+#############
+### Order by PGS wNEO etasq
+w = unlist( confounders_cor_v2 %>% filter(dependent == "PGS" & sample == "wNEO") %>% summarize(order(pvalue, decreasing = FALSE)) )
+trait_order = as.character( confounders_cor_v2$covariate[w] )
+confounders_cor_v2$covariate = factor( confounders_cor_v2$covariate, levels = trait_order[length(trait_order):1] )
+
+#############
+pcol =  wesanderson::wes_palette("Zissou1", 5, type = "discrete")
+
+PlotA = confounders_cor_v2 %>% ggplot( aes(y = dependent, x = covariate) ) +
+  geom_tile(aes(fill = etasq)) +
+  scale_fill_gradient2(mid = "white" , low = pcol[4], high = pcol[1], midpoint = 0.002   ) +
+  theme(axis.text.x = element_text(angle = 90)) +
+  geom_point(aes(color = -log10(pvalue) , size = -log10(pvalue) ) , shape = 19 ) +
+  scale_size(range = c(1, 8), breaks = c(3, 5, 10, 20, 50, 200), labels =c("3", "5", "10", "20", "50", "200") ) +
+  scale_color_gradient(low = "pink", high = "red") + 
+  geom_text(aes(label = round(etasq*100, d = 2)), nudge_y = 0.01, size = 5, color = "black", alpha = 0.8) +
+  labs(color = "-log10(P)", size = "-log10(P)", y = "", x = "covariables") +
+  theme(legend.position="bottom") +
+  coord_flip() +
+  facet_wrap(.~sample, ncol = 4)
+
+
+PlotA
+```
+
+
+## PLOT PDF TO FILE
+
+```{r}
+w = grep("results_dir", par_data[,1])
+f = paste0(par_data[w,2], "figures/PGS_covariate_EtaSq_v2.pdf")
+pdf(f, width = 8, height = 8)
+PlotA
+dev.off()
+
+
+```
+
+## PC3 and sub_population
+
+```{r}
+myest = c()
+
+for(pc in c("PC1","PC2","PC3","PC4")){
+  form = formula( paste0(pc, "~ subpop") )
+  fit = lm(form, data = mydata)
+  p = summary(fit)$coef[2,4]
+  a = anova(fit)
+  etsq = a[1,2]/sum(a[,2])
+  myest = rbind(myest, c(etsq, p) )
+}
+
+rownames(myest) = c("PC1","PC2","PC3","PC4")
+colnames(myest) = c("etasq","P")
+myest
+```
+```{r}
+fit0 = lm(Yengo_Weighted_GRS ~  PC3, data = mydata, weights = mydata$pweight)
+summary(fit0)$coef
+anova(fit0)
+
+fit = lm(Yengo_Weighted_GRS ~ subpop + PC3, data = mydata, weights = mydata$pweight)
+anova(fit)
+```
+
+
+
+```{r}
+mytext1 = paste0("% variance explained in PC3 by subpop")
+mytext2 = paste0("etasq*100 = ", round(myest[3,1]*100, d = 2), "%; P = ", signif(myest[3,2], d = 3) )
+
+p1 = mydata %>% ggplot(aes(x = PC3, y = PC4)) +
+  geom_point(aes(color = subpop), alpha = 0.5) +
+  scale_color_brewer(palette = "Set1") +
+  theme_bw()
+
+
+p2 = p1 + annotate(geom = "text", x = 0.025, y = -0.01, label = mytext1) +
+  annotate(geom = "text", x = 0.025, y = -0.0125, label = mytext2) 
+
+p2
+
+```
+
+
+## PLOT PDF TO FILE
+
+```{r}
+w = grep("results_dir", par_data[,1])
+f = paste0(par_data[w,2], "figures/PC3_subpop_structure.pdf")
+pdf(f, width = 8, height = 5)
+p2
+dev.off()
+
+
+```
+
+
+
+## Correlation among all possible confounders and all metabolites
+
+```{r}
+
+vars_2_test = c( as.character( unique(temp$covariate) ), "edu_higher", "alcohol" )
+###########################
+metabo_confounder_cors = c()
+for(trait in traits){
+  # cat(paste0(trait, "\n"))
+  for(v2t in vars_2_test){
+    # cat(paste0(v2t, "\n"))
+    ## define new data frame 
+    df = na.omit( mydata[, c(trait, v2t, "pweight")] )
+    ## test for no variation
+    if( length( unique( df[,2] ) ) == 1){
+      test = c(trait, v2t, nrow(df), NA, NA)
+      names(test) = c("dependent","covariate","sample_size","etasq","pvalue")
+    } else {
+      ##
+      test = covariate_lms(datain = df, 
+                       dependent = trait, 
+                       covariates = v2t, 
+                       weights = df$pweight) 
+    
+    }
+    metabo_confounder_cors = rbind(metabo_confounder_cors, test)
+  }
+}
+  
+metabo_confounder_cors = data.frame(metabo_confounder_cors)
+for(i in 3:5){
+  metabo_confounder_cors[,i] = as.numeric(metabo_confounder_cors[,i])
+}
+```
+
+## write to file
+
+```{r}
+w = grep("results_dir", par_data[,1])
+f = paste0(par_data[w,2], "tables/metabo_confounder_cors.txt")
+write.table(metabo_confounder_cors, file = f, 
+            row.names = FALSE, col.names = TRUE, sep = "\t", quote = FALSE)
+
+# metabo_confounder_cors = read.table(file = f, header = TRUE, as.is = TRUE, sep = "\t")
+
+```
+
+
+
+
+```{r confounder_raster_met, fig.width = 20, fig.height = 8}
+### Plot colors
+pcol =  wesanderson::wes_palette("Darjeeling2", 5 , type = "discrete")
+
+## define plot data
+pdata = metabo_confounder_cors
+
+
+## BF correction on Pvalues, those not sig turn to 0
+w = which(pdata$pvalue > 0.05/40)
+pdata$pvalue[w] = 0
+
+
+## Define Covariate plot order
+x = pdata %>% group_by(covariate) %>% summarize(mean_etasq = mean(etasq) ) %>% arrange(desc(mean_etasq) )
+pdata$covariate = factor(pdata$covariate, levels = x$covariate)
+
+
+###
+PlotA = pdata %>% ggplot( aes(y = covariate, x = dependent) ) +
+  geom_tile(aes(fill = etasq)) +
+  scale_fill_gradient(low = "white" , high = pcol[2] ) +
+  theme(axis.text.x = element_text(angle = 90, size = 3)) +
+  geom_point(aes(color = -log10(pvalue) , size = -log10(pvalue) ) , shape = 19 ) +
+  scale_color_gradient(low = "pink", high = "red") + 
+  labs(color = "-log10(P)", size = "-log10(P)") +
+  theme(legend.position="bottom")
+
+PlotA
+
+
+```
+
+
+## PLOT PDF TO FILE
+
+```{r}
+w = grep("results_dir", par_data[,1])
+f = paste0(par_data[w,2], "figures/PGS_Metabolite_confounder_EtaSq.pdf")
+pdf(f, width = 15, height = 8)
+PlotA
+dev.off()
+
+
+```
+
+
+
