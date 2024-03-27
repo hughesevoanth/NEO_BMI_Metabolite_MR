@@ -1,12 +1,20 @@
-# NEO Metabolite MR
+# BMI --> metabo MR 
 
-## -- fasting, postprandial, and response traits
-
+	Study: BMI --> Metabolite Mendelian Randomization (MR) Study
+	Cohort: Netherlands Epidemiology of Obestiy 
+	PI: Nicholas J Timpson, University of Bristol
 	by: David Hughes
-	
-___
+	date: March 2024
 
-## Introduction
+#### R code for publication: 
 
-This repository containing the scripts used to carry out a one-sample MR analysis of the effects BMI on fasting, postprandial and response metabolite (Nightingale platform) traits in the The Netherlands Epidemiology of Obesity study (NEO).
+"The association between body mass index and metabolite response to a liquid mixed meal challenge: a Mendelian randomization study"; American Journal of Clinical Nutrition, 2024. [doi](https://doi.org/10.1016/j.ajcnut.2024.03.009)
+
+##### authors: 
+David A. Hughes, Ruifang Li-Gao, Caroline J. Bull, Renée de Mutsert, Frits R. Rosendaal, Dennis O. Mook-Kanamori, Ko Willems van Dijk, Nicholas J. Timpson
+
+#### Research question: 
+Is there evidence that increases in BMI cause varition in metabolite abundance?
+
+
 
