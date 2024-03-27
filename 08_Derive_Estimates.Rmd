@@ -1,0 +1,710 @@
+---
+title: "NEO BMI-Metabolite point estimate derivation"
+author: "David Hughes"
+date: "2/6/2021"
+output: 
+  pdf_document:
+    number_sections: true
+---
+
+This script and markdown will derive each of the following estimates:
+
+    1. observational point estimates    
+        - weighted NEO
+        - Leiderdorp
+        - NEO
+        - Leiden
+
+    2. one-sample MR point estimates
+        - weighted NEO
+        - Leiderdorp
+        - NEO
+        - Leiden
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set( echo = TRUE, error = FALSE, warning = FALSE, message = FALSE)
+
+source("LOAD.R")
+
+library(ivreg)
+```
+
+
+
+## Weighted NEO analysis
+
+```{r wNEO}
+wNEO_stats = t( sapply(traits, function(trait){
+  out = obsmr( wdata = mydata,
+            outcome = trait,
+            exposure = "bmi",
+            instrument = "Yengo_Weighted_GRS",
+            covariates = c("visit_date","subpop","age","sex"),
+            weights = "pweight",
+            rnt_outcome = TRUE,
+            outlier_method = "iqr",
+            outlier_cutoff = 10,
+            messages = TRUE)
+  return(out)
+}) )
+##########################
+## turn into a data.frame
+##########################
+wNEO_stats = as.data.frame(wNEO_stats)
+##########################
+## convert to numeric
+##########################
+num_cols = c(4:6, 8:9, 12:24, 27:36, 39:48, 51:74 )
+for(i in num_cols){
+  wNEO_stats[,i] = as.numeric(wNEO_stats[,i])
+}
+##########################
+## write table to file
+##########################
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "tables/Dec12_2022_wNEO_estimates.txt")
+# write.table(wNEO_stats, file = f, row.names = FALSE, col.names = TRUE, sep = "\t", quote = FALSE)
+
+##########################
+## convert 2 long format
+##########################
+wNEO_long = obsmr_2_longformat(data = wNEO_stats, 
+                               pop_id = "wNEO", 
+                               alpha = 0.05/43, 
+                               sandwich_estimates = FALSE)
+```
+
+## Those metabolites causally influenced by BMI
+
+```{r}
+wNEO_stats %>% 
+  filter(MR_P < 0.05/43) %>% 
+  dplyr::select(MR_outcome, MR_n, MR_beta, MR_se, MR_P) %>%
+  kable() %>% kableExtra::kable_classic()
+```
+
+## response amino acids
+
+```{r}
+wNEO_stats %>% 
+  filter(MR_outcome %in% c("ala_r","leu_r","ile_r","val_r","his_r","phe_r","tyr_r","gln_r", 
+                           "ala_f","leu_f","ile_f","val_f","his_f","phe_f","tyr_f","gln_f", 
+                           "ala_p","leu_p","ile_p","val_p","his_p","phe_p","tyr_p","gln_p") ) %>% 
+  dplyr::select(MR_outcome, MR_n, MR_beta, MR_se, MR_P) %>%
+  kable() %>% kableExtra::kable_classic()
+```
+
+
+
+## Weighted NEO female
+
+```{r Leiderdorp}
+female = which( mydata$sex == "female")
+##
+wNEO_female_stats = t( sapply(traits, function(trait){
+  out = obsmr( wdata = mydata[female, ],
+            outcome = trait,
+            exposure = "bmi",
+            instrument = "Yengo_Weighted_GRS",
+            covariates = c("visit_date","subpop","age"),
+            weights = "pweight",
+            rnt_outcome = TRUE,
+            outlier_method = "iqr",
+            outlier_cutoff = 10,
+            messages = TRUE)
+  return(out)
+}) )
+##########################
+## turn into a data.frame
+##########################
+wNEO_female_stats = as.data.frame(wNEO_female_stats)
+##########################
+## convert to numeric
+##########################
+num_cols = c(4:6, 8:9, 12:24, 27:36, 39:48, 51:74 )
+for(i in num_cols){
+  wNEO_female_stats[,i] = as.numeric(wNEO_female_stats[,i])
+}
+##########################
+## write table to file
+##########################
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "tables/Dec12_2022_wNEO_females_estimates.txt")
+write.table(wNEO_female_stats, file = f, row.names = FALSE, col.names = TRUE, sep = "\t", quote = FALSE)
+
+##########################
+## convert 2 long format
+##########################
+wNEO_female_long = obsmr_2_longformat(data = wNEO_female_stats, 
+                                     pop_id = "wNEO_female", 
+                                     alpha = 0.05/43, 
+                                     sandwich_estimates = FALSE)
+```
+
+
+## Weighted NEO male
+
+```{r Leiderdorp}
+male = which( mydata$sex == "male")
+##
+wNEO_male_stats = t( sapply(traits, function(trait){
+  out = obsmr( wdata = mydata[male, ],
+            outcome = trait,
+            exposure = "bmi",
+            instrument = "Yengo_Weighted_GRS",
+            covariates = c("visit_date","subpop","age"),
+            weights = "pweight",
+            rnt_outcome = TRUE,
+            outlier_method = "iqr",
+            outlier_cutoff = 10,
+            messages = TRUE)
+  return(out)
+}) )
+##########################
+## turn into a data.frame
+##########################
+wNEO_male_stats = as.data.frame(wNEO_male_stats)
+##########################
+## convert to numeric
+##########################
+num_cols = c(4:6, 8:9, 12:24, 27:36, 39:48, 51:74 )
+for(i in num_cols){
+  wNEO_male_stats[,i] = as.numeric(wNEO_male_stats[,i])
+}
+##########################
+## write table to file
+##########################
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "tables/Dec12_2022_wNEO_males_estimates.txt")
+write.table(wNEO_male_stats, file = f, row.names = FALSE, col.names = TRUE, sep = "\t", quote = FALSE)
+
+##########################
+## convert 2 long format
+##########################
+wNEO_male_long = obsmr_2_longformat(data = wNEO_male_stats, 
+                                     pop_id = "wNEO_male", 
+                                     alpha = 0.05/43, 
+                                     sandwich_estimates = FALSE)
+```
+
+
+## NEO
+
+```{r NEO}
+NEO_stats = t( sapply(traits, function(trait){
+  out = obsmr( wdata = mydata,
+            outcome = trait,
+            exposure = "bmi",
+            instrument = "Yengo_Weighted_GRS",
+            covariates = c("visit_date","subpop","age","sex"),
+            weights = NA,
+            rnt_outcome = TRUE,
+            outlier_method = "iqr",
+            outlier_cutoff = 10,
+            messages = TRUE)
+  return(out)
+}) )
+##########################
+## turn into a data.frame
+##########################
+NEO_stats = as.data.frame(NEO_stats)
+##########################
+## convert to numeric
+##########################
+num_cols = c(4:6, 8:9, 12:24, 27:36, 39:48, 51:74 )
+for(i in num_cols){
+  NEO_stats[,i] = as.numeric(NEO_stats[,i])
+}
+##########################
+## write table to file
+##########################
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "tables/Dec12_2022_NEO_estimates.txt")
+write.table(NEO_stats, file = f, row.names = FALSE, col.names = TRUE, sep = "\t", quote = FALSE)
+
+##########################
+## convert 2 long format
+##########################
+NEO_long = obsmr_2_longformat(data = NEO_stats, 
+                              pop_id = "NEO", 
+                              alpha = 0.05/43, 
+                              sandwich_estimates = FALSE)
+```
+
+
+
+## Leiderdorp
+
+```{r Leiderdorp}
+Leiderdorp = grep("Leiderdorp", mydata$subpop)
+##
+Leiderdorp_stats = t( sapply(traits, function(trait){
+  out = obsmr( wdata = mydata[Leiderdorp, ],
+            outcome = trait,
+            exposure = "bmi",
+            instrument = "Yengo_Weighted_GRS",
+            covariates = c("visit_date","age","sex"),
+            weights = NA,
+            rnt_outcome = TRUE,
+            outlier_method = "iqr",
+            outlier_cutoff = 10,
+            messages = TRUE)
+  return(out)
+}) )
+##########################
+## turn into a data.frame
+##########################
+Leiderdorp_stats = as.data.frame(Leiderdorp_stats)
+##########################
+## convert to numeric
+##########################
+num_cols = c(4:6, 8:9, 12:24, 27:36, 39:48, 51:74 )
+for(i in num_cols){
+  Leiderdorp_stats[,i] = as.numeric(Leiderdorp_stats[,i])
+}
+##########################
+## write table to file
+##########################
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "tables/Dec12_2022_Leiderdorp_estimates.txt")
+write.table(Leiderdorp_stats, file = f, row.names = FALSE, col.names = TRUE, sep = "\t", quote = FALSE)
+
+##########################
+## convert 2 long format
+##########################
+Leiderdorp_long = obsmr_2_longformat(data = Leiderdorp_stats, 
+                                     pop_id = "Leiderdorp", 
+                                     alpha = 0.05/43, 
+                                     sandwich_estimates = FALSE)
+```
+
+
+
+## Leiderdorp female
+
+```{r Leiderdorp}
+Leiderdorp_female = which( mydata$subpop == "Leiderdorp" & mydata$sex == "female")
+##
+Leiderdorp_female_stats = t( sapply(traits, function(trait){
+  out = obsmr( wdata = mydata[Leiderdorp_female, ],
+            outcome = trait,
+            exposure = "bmi",
+            instrument = "Yengo_Weighted_GRS",
+            covariates = c("visit_date","age"),
+            weights = NA,
+            rnt_outcome = TRUE,
+            outlier_method = "iqr",
+            outlier_cutoff = 10,
+            messages = TRUE)
+  return(out)
+}) )
+##########################
+## turn into a data.frame
+##########################
+Leiderdorp_female_stats = as.data.frame(Leiderdorp_female_stats)
+##########################
+## convert to numeric
+##########################
+num_cols = c(4:6, 8:9, 12:24, 27:36, 39:48, 51:74 )
+for(i in num_cols){
+  Leiderdorp_female_stats[,i] = as.numeric(Leiderdorp_female_stats[,i])
+}
+##########################
+## write table to file
+##########################
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "tables/Dec12_2022_Leiderdorp_females_estimates.txt")
+write.table(Leiderdorp_female_stats, file = f, 
+            row.names = FALSE, col.names = TRUE, sep = "\t", quote = FALSE)
+
+##########################
+## convert 2 long format
+##########################
+Leiderdorp_female_long = obsmr_2_longformat(data = Leiderdorp_female_stats, 
+                                     pop_id = "Leiderdorp_female", 
+                                     alpha = 0.05/43, 
+                                     sandwich_estimates = FALSE)
+```
+
+
+## Leiderdorp male
+
+```{r Leiderdorp}
+Leiderdorp_male = which( mydata$subpop == "Leiderdorp" & mydata$sex == "male")
+##
+Leiderdorp_male_stats = t( sapply(traits, function(trait){
+  out = obsmr( wdata = mydata[Leiderdorp_male, ],
+            outcome = trait,
+            exposure = "bmi",
+            instrument = "Yengo_Weighted_GRS",
+            covariates = c("visit_date","age"),
+            weights = NA,
+            rnt_outcome = TRUE,
+            outlier_method = "iqr",
+            outlier_cutoff = 10,
+            messages = TRUE)
+  return(out)
+}) )
+##########################
+## turn into a data.frame
+##########################
+Leiderdorp_male_stats = as.data.frame(Leiderdorp_male_stats)
+##########################
+## convert to numeric
+##########################
+num_cols = c(4:6, 8:9, 12:24, 27:36, 39:48, 51:74 )
+for(i in num_cols){
+  Leiderdorp_male_stats[,i] = as.numeric(Leiderdorp_male_stats[,i])
+}
+##########################
+## write table to file
+##########################
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "tables/Dec12_2022_Leiderdorp_males_estimates.txt")
+write.table(Leiderdorp_male_stats, file = f, 
+            row.names = FALSE, col.names = TRUE, sep = "\t", quote = FALSE)
+
+##########################
+## convert 2 long format
+##########################
+Leiderdorp_male_long = obsmr_2_longformat(data = Leiderdorp_male_stats, 
+                                     pop_id = "Leiderdorp_male", 
+                                     alpha = 0.05/43, 
+                                     sandwich_estimates = FALSE)
+```
+
+
+
+
+## Leiden
+
+```{r Leiden}
+Leiden = grep("Leiden", mydata$subpop)
+##
+Leiden_stats = t( sapply(traits, function(trait){
+  out = obsmr( wdata = mydata[Leiden, ],
+            outcome = trait,
+            exposure = "bmi",
+            instrument = "Yengo_Weighted_GRS",
+            covariates = c("visit_date","age","sex"),
+            weights = NA,
+            rnt_outcome = TRUE,
+            outlier_method = "iqr",
+            outlier_cutoff = 10,
+            messages = TRUE)
+  return(out)
+}) )
+##########################
+## turn into a data.frame
+##########################
+Leiden_stats = as.data.frame(Leiden_stats)
+##########################
+## convert to numeric
+##########################
+num_cols = c(4:6, 8:9, 12:24, 27:36, 39:48, 51:74 )
+for(i in num_cols){
+  Leiden_stats[,i] = as.numeric(Leiden_stats[,i])
+}
+##########################
+## write table to file
+##########################
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "tables/Dec12_2022_Leiden_estimates.txt")
+write.table(Leiden_stats, file = f, 
+            row.names = FALSE, col.names = TRUE, sep = "\t", quote = FALSE)
+
+##########################
+## convert 2 long format
+##########################
+Leiden_long = obsmr_2_longformat(data = Leiden_stats, 
+                                     pop_id = "Leiden", 
+                                     alpha = 0.05/43, 
+                                     sandwich_estimates = FALSE)
+```
+
+
+
+## Save the data to Rdata file
+
+```{r}
+obs_tsls_est = list(wNEO_stats, wNEO_female_stats, wNEO_male_stats,
+                    Leiderdorp_stats, Leiderdorp_female_stats,
+                    Leiderdorp_male_stats,
+                    NEO_stats, Leiden_stats)
+names(obs_tsls_est) = c("wNEO", "wNEO_female", "wNEO_male",
+                        "Leiderdorp", "Leiderdorp_female","Leiderdorp_male", 
+                        "NEO","Leiden")
+####
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+
+f = paste0(resultsdir, "obs_tsls_estimates_Dec12_2022.Rdata")
+save( obs_tsls_est, file = f)
+```
+
+
+## Save the data to Rdata file
+
+```{r}
+obs_tsls_est_long = list(wNEO_long, wNEO_female_long, wNEO_male_long,
+                    Leiderdorp_long, Leiderdorp_female_long,
+                    Leiderdorp_male_long,
+                    NEO_long, Leiden_long)
+names(obs_tsls_est_long) = c("wNEO", "wNEO_female", "wNEO_male",
+                        "Leiderdorp", "Leiderdorp_female","Leiderdorp_male", 
+                        "NEO","Leiden")
+####
+f = paste0(resultsdir, "obs_tsls_estimates_long_Dec12_2022.Rdata")
+save( obs_tsls_est_long, file = f)
+
+```
+
+
+# SENSITIVITY ANALYSIS
+
+## extract the perox3 samples
+
+```{r}
+w = which(mydata$perox_3 == 1)
+tempdata = mydata[-w, ]
+```
+
+## Weighted NEO analysis
+
+```{r wNEO}
+wNEO_sensitivity = t( sapply(traits, function(trait){
+  out = obsmr( wdata = tempdata,
+            outcome = trait,
+            exposure = "bmi",
+            instrument = "Yengo_Weighted_GRS",
+            covariates = c("visit_date","subpop","age","sex", "PC3", "packyears","diet_weigth_loss"),
+            weights = "pweight",
+            rnt_outcome = TRUE,
+            outlier_method = "iqr",
+            outlier_cutoff = 10,
+            messages = TRUE)
+  return(out)
+}) )
+##########################
+## turn into a data.frame
+##########################
+wNEO_sensitivity = as.data.frame(wNEO_sensitivity)
+##########################
+## convert to numeric
+##########################
+num_cols = c(4:6, 8:9, 12:24, 27:36, 39:48, 51:74 )
+for(i in num_cols){
+  wNEO_sensitivity[,i] = as.numeric(wNEO_sensitivity[,i])
+}
+##########################
+## write table to file
+##########################
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "tables/Dec12_2022_wNEO_SENSITIVITY_estimates.txt")
+write.table(wNEO_sensitivity, file = f, row.names = FALSE, col.names = TRUE, sep = "\t", quote = FALSE)
+
+##########################
+## convert 2 long format
+##########################
+wNEO_sensitivity_long = obsmr_2_longformat(data = wNEO_sensitivity, 
+                               pop_id = "wNEO_SA", 
+                               alpha = 0.05/43, 
+                               sandwich_estimates = FALSE)
+```
+
+
+
+## Weighted NEO analysis with NO rank normal transformation
+
+```{r wNEO}
+wNEO_noRNT_stats = t( sapply(traits, function(trait){
+  out = obsmr( wdata = mydata,
+            outcome = trait,
+            exposure = "bmi",
+            instrument = "Yengo_Weighted_GRS",
+            covariates = c("visit_date","subpop","age","sex"),
+            weights = "pweight",
+            rnt_outcome = FALSE,
+            outlier_method = "iqr",
+            outlier_cutoff = 10,
+            messages = TRUE)
+  return(out)
+}) )
+##########################
+## turn into a data.frame
+##########################
+wNEO_noRNT_stats = as.data.frame(wNEO_noRNT_stats)
+##########################
+## convert to numeric
+##########################
+num_cols = c(4:6, 8:9, 12:24, 27:36, 39:48, 51:74 )
+for(i in num_cols){
+  wNEO_noRNT_stats[,i] = as.numeric(wNEO_noRNT_stats[,i])
+}
+##########################
+## write table to file
+##########################
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "tables/Mar7_2023_wNEO_noRNT_estimates.txt")
+write.table(wNEO_noRNT_stats, file = f, row.names = FALSE, col.names = TRUE, sep = "\t", quote = FALSE)
+
+```
+
+## Those metabolites causally influenced by BMI
+
+```{r}
+wNEO_noRNT_stats %>% 
+  filter(MR_P < 0.05/43) %>% 
+  dplyr::select(MR_outcome, MR_n, MR_beta, MR_se, MR_P) %>%
+  kable() %>% kableExtra::kable_classic()
+```
+
+
+# Alternative response traits 
+
+  1. ornls
+  2. delta
+
+## Setup the data
+
+```{r}
+## find the response traits
+w = grep("_r", colnames(study_data$full_data) )
+ornls = study_data$full_data[,w]
+## remove the deming response traits
+w = grep("_deming_r", colnames(ornls) )
+ornls = ornls[,-w]
+## rename traits
+colnames(ornls) = gsub("_r","_ornls",colnames(ornls))
+
+## derive delta
+delta = sapply(metids, function(id){
+  f = paste0(id,"_f")
+  p = paste0(id,"_p")
+  d = mydata[,p] - mydata[,f]
+  return(d)
+}) 
+colnames(delta) = paste0(metids, "_delta")
+
+alt_res_data = cbind(mydata[,1:11] , ornls, delta)
+alr_res_traits = c( colnames(ornls), colnames(delta) )
+
+```
+
+
+## Weighted NEO analysis on ornls and delta response traits
+
+```{r wNEO}
+wNEO_alt_response = t( sapply(alr_res_traits, function(trait){
+  out = obsmr( wdata = alt_res_data,
+            outcome = trait,
+            exposure = "bmi",
+            instrument = "Yengo_Weighted_GRS",
+            covariates = c("visit_date","subpop","age","sex"),
+            weights = "pweight",
+            rnt_outcome = TRUE,
+            outlier_method = "iqr",
+            outlier_cutoff = 10,
+            messages = TRUE)
+  return(out)
+}) )
+##########################
+## turn into a data.frame
+##########################
+wNEO_alt_response = as.data.frame(wNEO_alt_response)
+##########################
+## convert to numeric
+##########################
+num_cols = c(4:6, 8:9, 12:24, 27:36, 39:48, 51:74 )
+for(i in num_cols){
+  wNEO_alt_response[,i] = as.numeric(wNEO_alt_response[,i])
+}
+##########################
+## write table to file
+##########################
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "tables/May17_wNEO_alt_response_estimates.txt")
+write.table(wNEO_alt_response, file = f, row.names = FALSE, col.names = TRUE, sep = "\t", quote = FALSE)
+
+```
+
+## Those metabolites causally influenced by BMI
+
+```{r}
+wNEO_alt_response %>% 
+  filter(MR_P < 0.05/43) %>% 
+  dplyr::select(MR_outcome, MR_n, MR_beta, MR_se, MR_P) %>%
+  kable() %>% kableExtra::kable_classic()
+```
+
+
+```{r}
+wNEO_alt_response %>% 
+  filter(MR_P < 0.05) %>% 
+  dplyr::select(MR_outcome, MR_n, MR_beta, MR_se, MR_P) %>%
+  arrange(MR_P) %>%
+  kable() %>% kableExtra::kable_classic()
+```
+
+
+## Weighted NEO analysis on ornls and delta response traits
+
+```{r wNEO}
+wNEO_alt_response_v2 = t( sapply(alr_res_traits, function(trait){
+  out = obsmr( wdata = alt_res_data,
+            outcome = trait,
+            exposure = "bmi",
+            instrument = "Yengo_Weighted_GRS",
+            covariates = c("visit_date","subpop","age","sex"),
+            weights = "pweight",
+            rnt_outcome = TRUE,
+            outlier_method = "iqr",
+            outlier_cutoff = 5,
+            messages = TRUE)
+  return(out)
+}) )
+##########################
+## turn into a data.frame
+##########################
+wNEO_alt_response_v2 = as.data.frame(wNEO_alt_response_v2)
+##########################
+## convert to numeric
+##########################
+num_cols = c(4:6, 8:9, 12:24, 27:36, 39:48, 51:74 )
+for(i in num_cols){
+  wNEO_alt_response_v2[,i] = as.numeric(wNEO_alt_response_v2[,i])
+}
+##########################
+## write table to file
+##########################
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "tables/May17_wNEO_alt_response_estimates_v2.txt")
+write.table(wNEO_alt_response_v2, file = f, row.names = FALSE, col.names = TRUE, sep = "\t", quote = FALSE)
+
+```
+
+
+
+
+```{r}
+wNEO_alt_response_v2 %>% 
+  filter(MR_P < 0.05/43) %>% 
+  dplyr::select(MR_outcome, MR_n, MR_beta, MR_se, MR_P) %>%
+  arrange(MR_P) %>%
+  kable() %>% kableExtra::kable_classic()
+```
+
+

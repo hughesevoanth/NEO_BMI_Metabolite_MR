@@ -1,0 +1,1982 @@
+---
+title: "NEO BMI-Metabolite Exploring Point Estimate Results"
+author: "David Hughes"
+date: "2/6/2021"
+output: 
+  pdf_document:
+    number_sections: true
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set( echo = TRUE, error = FALSE, warning = FALSE, message = FALSE)
+
+source("LOAD.R")
+
+```
+
+## Load point estimates
+
+```{r}
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+
+f = paste0(resultsdir, "obs_tsls_estimates_Dec12_2022.Rdata")
+load( f)
+
+## long format data
+f = paste0(resultsdir, "obs_tsls_estimates_long_Dec12_2022.Rdata")
+load( file = f)
+
+```
+
+## load sensitivity data
+
+```{r}
+## sensitivity results
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "tables/Dec12_2022_wNEO_SENSITIVITY_estimates.txt")
+wNEO_sensitivity = read.table(f, header = TRUE, sep = "\t", as.is = TRUE)
+
+## long format of sensitivity 
+wNEO_sensitivity_long = obsmr_2_longformat(data = wNEO_sensitivity, 
+                               pop_id = "wNEO_sa", 
+                               alpha = 0.05/43, 
+                               sandwich_estimates = FALSE)
+```
+
+## add sensitivity data to list
+
+```{r}
+obs_tsls_est[["wNEO_sa"]] = wNEO_sensitivity
+
+obs_tsls_est_long[["wNEO_sa"]] = wNEO_sensitivity_long
+```
+
+## add annotation
+
+```{r}
+## add annotation
+m = match(obs_tsls_est$wNEO$outcome , study_data$feature_anno$new_id)
+obs_tsls_est$wNEO = cbind(obs_tsls_est$wNEO, study_data$feature_anno[m, c("metabolite","dietary_state","raw.label", "class", "subclass")])
+
+obs_tsls_est$wNEO$dietary_state = factor(obs_tsls_est$wNEO$dietary_state, levels = c("fasting","postprandial","response"))
+```
+
+
+```{r}
+names(obs_tsls_est)
+```
+
+## combine all of the data sets in a single long format data frame
+
+```{r}
+long_data = c()
+for(i in 1:length(obs_tsls_est_long)){
+  long_data = rbind(long_data, obs_tsls_est_long[[i]] )
+}
+###
+# table(long_data$analysis)
+##
+u = unique(long_data$analysis)
+o = as.character( u[grep("obs_", u)] )
+m = as.character( u[grep("tsls_", u)] )
+
+long_data$analysis = factor(long_data$analysis, levels = c(m,o)[length(c(m,o)):1] )
+
+## add annotation
+m = match(long_data$outcome , study_data$feature_anno$new_id)
+long_data = cbind(long_data, study_data$feature_anno[m, c("metabolite","dietary_state","raw.label", "class", "subclass")])
+
+```
+
+
+## Observational Estimates wNEO, wNEO_female, wNEO_male
+
+```{r}
+long_obs = long_data
+## unique analysis names
+u = as.character( unique(long_obs$analysis) )
+## which analysis are from weighted NEO and Leiderdorp
+w = which(long_obs$analysis %in% c("obs_wNEO", "obs_wNEO_female", "obs_wNEO_male") )
+## re-define
+long_obs = long_obs[w,]
+## define factor and levels
+long_obs$analysis = factor(long_obs$analysis, 
+                             levels = c("obs_wNEO", "obs_wNEO_female", "obs_wNEO_male")[3:1]  )
+```
+
+
+
+## Observational assocations with heterogenity among the sexes
+
+```{r}
+female_associations = unlist( long_obs %>% filter(pval < 0.05/43 & analysis == "obs_wNEO_female") %>% dplyr::select(outcome) )
+male_associations = unlist( long_obs %>% filter(pval < 0.05/43 & analysis == "obs_wNEO_male") %>% dplyr::select(outcome) )
+##
+fspecific = female_associations[!female_associations %in% male_associations]
+mspecific = male_associations[!male_associations %in% female_associations]
+## 
+fmspecific = c(fspecific, mspecific)
+```
+
+
+```{r}
+df = data.frame(outcome = obs_tsls_est$wNEO_female$outcome,
+                female_beta = obs_tsls_est$wNEO_female$Obs_beta,
+                female_se = obs_tsls_est$wNEO_female$Obs_se,
+                male_beta = obs_tsls_est$wNEO_male$Obs_beta,
+                male_se = obs_tsls_est$wNEO_male$Obs_se
+                )
+z = t( sapply(1:nrow(df), function(i){
+  ztest(df$female_beta[i], df$female_se[i], 
+        df$male_beta[i], df$male_se[i])
+}) )
+
+df$ztestP = ifelse( z[,2] < 0.05, "< 0.05", "> 0.05")
+df$ztestP = ifelse( z[,2] < 0.05/43, "< 0.05/43", df$ztestP)
+df$ztestP = factor(df$ztestP, levels = c("> 0.05","< 0.05","< 0.05/43"))
+table(df$ztestP)
+```
+
+
+
+```{r fig.width = 18, fig.height = 10, warning=FALSE, error=FALSE}
+## data to plot
+# temp = long_obs %>% filter(outcome %in% fmspecific)
+w = which( df$ztestP == "< 0.05/43")
+het_outcomes = long_obs %>% filter(outcome %in% df$outcome[w] )
+## colors
+pcol = RColorBrewer::brewer.pal(3, "Set1")
+pcol = c("grey", pcol[1:2])
+##### sort by outcome
+u = unique(df$outcome)
+r = u[grep("_r",u)]
+p = u[grep("_p",u)]
+f = u[grep("_f",u)]
+u = c(r,p,f)
+df$outcome = factor(df$outcome, levels = u)
+##
+
+( p = dh_forrest_plot(data = het_outcomes, 
+                alpha = 0.05/43, 
+                analysis_type = "obs_wNEO",
+                arrange_by = "outcome",
+                title = NA, covariates = NA, confounders = NA,
+                outcome_label = "",
+                exposure_label = "",
+                filter_data = FALSE,
+                column_4_x = "analysis",
+                column_4_color = "analysis",
+                col_count = 3,
+                color_choices = pcol)
+)
+
+# ####################
+# w = which(par_data[,1] == "results_dir")
+# resultsdir = par_data[w,2]
+# f = paste0(resultsdir, "figures/wNEO_sex_het_forrestplot.pdf")
+# ####################
+# pdf(file = f, width = 10, height = 4)
+# p
+# dev.off()
+
+
+```
+
+
+## combine 2
+
+```{r}
+long_data2 = long_data
+## unique analysis names
+u = as.character( unique(long_data2$analysis) )
+## which analysis are from weighted NEO and Leiderdorp
+w = which(long_data2$analysis %in% c("obs_wNEO", "tsls_wNEO", "obs_Leiderdorp", "tsls_Leiderdorp") )
+## re-define
+long_data2 = long_data2[w,]
+## define factor
+long_data2$analysis = as.factor(as.character(long_data2$analysis))
+long_data2$analysis = factor(long_data2$analysis, 
+                             levels = c("tsls_wNEO","tsls_Leiderdorp","obs_wNEO","obs_Leiderdorp")[4:1]  )
+```
+
+
+## combine 3
+
+```{r}
+long_data3 = long_data
+## unique analysis names
+u = as.character( unique(long_data3$analysis) )
+## which analysis are from weighted NEO and Leiderdorp
+w = which(long_data3$analysis %in% c("obs_wNEO", "tsls_wNEO", 
+                                     "obs_wNEO_sa", "tsls_wNEO_sa", 
+                                     "obs_Leiderdorp", "tsls_Leiderdorp") )
+## re-define
+long_data3 = long_data3[w,]
+## define factor
+long_data3$analysis = as.factor(as.character(long_data3$analysis))
+long_data3$analysis = factor(long_data3$analysis, 
+                             levels = c("tsls_wNEO", "tsls_wNEO_sa", "tsls_Leiderdorp", 
+                                        "obs_wNEO", "obs_wNEO_sa", "obs_Leiderdorp")[6:1]  )
+```
+
+
+
+## How many metabolite traits are causally associated with BMI in the weighted NEO analysis at an alpha of 0.05 ?
+
+```{r}
+## filter
+temp = long_data %>% filter(analysis == "tsls_wNEO" & pval <= 0.05)
+## count
+nrow(temp)
+## sub types
+### response
+length( grep( "_r", temp$outcome ) )
+### Fasting
+length( grep( "_f", temp$outcome ) )
+### postprandial
+length( grep( "_p", temp$outcome ) )
+
+```
+
+## How many metabolite traits are causally associated with BMI in the weighted NEO analysis at an alpha of 0.05/43 ?
+
+```{r}
+## filter
+temp = long_data %>% filter(analysis == "tsls_wNEO" & pval <= 0.05/43)
+## count
+nrow(temp)
+## sub types
+### response
+length( grep( "_r", temp$outcome ) )
+### Fasting
+length( grep( "_f", temp$outcome ) )
+### postprandial
+length( grep( "_p", temp$outcome ) )
+
+```
+
+
+```{r}
+long_data %>% 
+  filter(dietary_state != "response" & analysis == "tsls_wNEO" & pval < 0.05 & class == "Amino acids") %>% dplyr::select(metabolite, dietary_state, raw.label, class, subclass, beta, se, pval) %>% 
+  kable() %>%
+  kable_classic()
+  
+```
+
+```{r}
+long_data %>% 
+  filter(dietary_state == "postprandial" & analysis == "tsls_wNEO" & pval < 0.05 & beta < 0) %>% dplyr::select(metabolite, raw.label, class, subclass, beta, se, pval) %>% 
+  kable() %>%
+  kable_classic()
+  
+```
+
+
+
+```{r}
+long_data %>% 
+  filter(dietary_state == "fasting" & analysis == "tsls_wNEO" & pval < 0.05 & beta < 0) %>% 
+  dplyr::select(metabolite, raw.label, class, subclass, beta, se, pval) %>% 
+  kable() %>%
+  kable_classic_2()
+```
+
+```{r}
+long_data %>% 
+  filter( grepl("apo",outcome) & analysis == "tsls_wNEO"  ) %>% 
+  dplyr::select(metabolite, dietary_state, raw.label, class, subclass, beta, se, pval) %>% 
+  kable() %>%
+  kable_classic_2()
+  
+```
+
+
+## top results with the weighted NEO analysis
+
+```{r fig.width = 17, fig.height = 15}
+# pcols = c( RColorBrewer::brewer.pal(8, "Greens")[8:5], RColorBrewer::brewer.pal(8, "Blues")[8:5]   )
+###
+pcol_green = RColorBrewer::brewer.pal(8, "Greens")
+pcol_blue = RColorBrewer::brewer.pal(8, "Blues")
+pcol_purple = RColorBrewer::brewer.pal(8, "Purples")
+pcol_red = RColorBrewer::brewer.pal(8, "Reds")
+pcol_orange = RColorBrewer::brewer.pal(8, "Oranges")
+pcol_grey = RColorBrewer::brewer.pal(8, "Greys")
+######
+pcols = c( pcol_green[8], pcol_grey[8:7],  
+           pcol_green[7], pcol_grey[6:5], 
+           pcol_green[6:5],
+           pcol_blue[8], pcol_grey[8:7],  
+           pcol_blue[7], pcol_grey[6:5], 
+           pcol_blue[6:5])
+
+pcols_2 = c( pcol_blue[8:6], ## wNEO 
+             pcol_green[8:6], ## Leiderdorp
+             pcol_red[6:5], ## NEO and Leiden
+             "black", ## wNEO sensitivity analysis
+              pcol_blue[5:3],
+             pcol_green[5:3],
+             pcol_orange[6:5],
+             "black")
+
+##### sort by outcome
+u = unique(long_data$outcome)
+r = u[grep("_r",u)]
+p = u[grep("_p",u)]
+f = u[grep("_f",u)]
+u = c(r,p,f)
+
+long_data$outcome = factor(long_data$outcome, levels = u)
+#####
+
+Fplot = dh_forrest_plot(data = long_data, 
+                alpha = 0.05/43, 
+                analysis_type = "tsls_wNEO",
+                arrange_by = "outcome",
+                title = NA, covariates = NA, confounders = NA,
+                outcome_label = "",
+                exposure_label = "",
+                filter_data = TRUE,
+                column_4_x = "analysis",
+                column_4_color = "analysis",
+                col_count = 3,
+                color_choices = pcols_2)
+
+Fplot
+
+
+```
+
+
+```{r}
+####################
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "figures/forrestplot_wALL.pdf")
+####################
+pdf(file = f, width = 15, height = 15)
+Fplot
+dev.off()
+
+```
+
+
+## top results with the weighted NEO analysis
+
+```{r fig.width = 14, fig.height = 6, warning=FALSE, error=FALSE}
+# pcols = c( RColorBrewer::brewer.pal(8, "Greens")[8:5], RColorBrewer::brewer.pal(8, "Blues")[8:5]   )
+###
+pcol_green = RColorBrewer::brewer.pal(8, "Greens")
+pcol_blue = RColorBrewer::brewer.pal(8, "Blues")
+######
+pcols = c(  pcol_blue[8:7],  
+            pcol_green[6:5] )
+##### sort by outcome
+u = unique(long_data2$outcome)
+r = u[grep("_r",u)]
+p = u[grep("_p",u)]
+f = u[grep("_f",u)]
+u = c(as.character(f),as.character(p),as.character(r))
+temp = long_data2
+temp$outcome = factor(temp$outcome, levels = u)
+##
+
+p = dh_forrest_plot(data = temp, 
+                alpha = 0.05/43, 
+                analysis_type = "tsls_wNEO",
+                arrange_by = "outcome",
+                title = NA, covariates = NA, confounders = NA,
+                outcome_label = "",
+                exposure_label = "",
+                filter_data = TRUE,
+                column_4_x = "analysis",
+                column_4_color = "analysis",
+                col_count = 3,
+                color_choices = pcols, 
+                facet_variable = "outcome")
+
+# ####################
+# w = which(par_data[,1] == "results_dir")
+# resultsdir = par_data[w,2]
+# f = paste0(resultsdir, "figures/wNEO_forrestplot.pdf")
+# ####################
+# pdf(file = f, width = 10, height = 4)
+# p
+# dev.off()
+
+p
+```
+
+
+```{r fig.width = 6, fig.height = 6, warning=FALSE, error=FALSE}
+# pcols = c( RColorBrewer::brewer.pal(8, "Greens")[8:5], RColorBrewer::brewer.pal(8, "Blues")[8:5]   )
+###
+pcol_green = RColorBrewer::brewer.pal(8, "Greens")
+pcol_blue = RColorBrewer::brewer.pal(8, "Blues")
+######
+pcols = c(  pcol_blue[8:7],  
+            pcol_green[6:5] )
+
+p1 = dh_forrest_plot(data = long_data2 %>% filter(dietary_state == "fasting"), 
+                alpha = 0.05/43, 
+                analysis_type = "tsls_wNEO",
+                arrange_by = "class",
+                title = "fasting", covariates = NA, confounders = NA,
+                outcome_label = "",
+                exposure_label = "",
+                filter_data = TRUE,
+                column_4_x = "analysis",
+                column_4_color = "analysis",
+                col_count = 1,
+                color_choices = pcols,
+                facet_variable = "metabolite")
+
+
+p2 = dh_forrest_plot(data = long_data2 %>% filter(dietary_state == "postprandial"), 
+                alpha = 0.05/43, 
+                analysis_type = "tsls_wNEO",
+                arrange_by = "class",
+                title = "postprandial", covariates = NA, confounders = NA,
+                outcome_label = "",
+                exposure_label = "",
+                filter_data = TRUE,
+                column_4_x = "analysis",
+                column_4_color = "analysis",
+                col_count = 1,
+                color_choices = pcols,
+                facet_variable = "metabolite")
+
+p3 = dh_forrest_plot(data = long_data2 %>% filter(dietary_state == "response"), 
+                alpha = 0.05/43, 
+                analysis_type = "tsls_wNEO",
+                arrange_by = "class",
+                title = "response", covariates = NA, confounders = NA,
+                outcome_label = "",
+                exposure_label = "",
+                filter_data = TRUE,
+                column_4_x = "analysis",
+                column_4_color = "analysis",
+                col_count = 1,
+                color_choices = pcols,
+                facet_variable = "metabolite")
+
+```
+
+
+```{r, fig.width = 15, fig.height = 8}
+library(patchwork)
+
+( p1/p3 +  plot_layout(guides = 'collect') ) | p2  +  plot_layout(guides = 'collect')
+```
+
+
+
+## Gen pop + Sex Data in Long Format
+
+```{r}
+long_sex = long_data
+## unique analysis names
+u = as.character( unique(long_sex$analysis) )
+## which analysis are from weighted NEO and Leiderdorp
+w = which(long_sex$analysis %in% c("obs_wNEO", "tsls_wNEO", 
+                                     "obs_wNEO_female", "tsls_wNEO_female",
+                                     "obs_wNEO_male", "tsls_wNEO_male") )
+## re-define
+long_sex = long_sex[w,]
+## define factor
+long_sex$analysis = as.factor(as.character(long_sex$analysis))
+long_sex$analysis = factor(long_sex$analysis, 
+                             levels = c("tsls_wNEO","tsls_wNEO_female","tsls_wNEO_male",
+                                        "obs_wNEO", "obs_wNEO_female" , "obs_wNEO_male")[6:1]  )
+```
+
+
+Sex specific MR Associations
+
+```{r}
+## gen pop
+g = unlist( obs_tsls_est$wNEO %>% filter( MR_P < 0.05/43 ) %>% dplyr::select(outcome) )
+
+## females
+f = unlist( obs_tsls_est$wNEO_female %>% filter( MR_P < 0.05/43 ) %>% dplyr::select(outcome) )
+f_specific = f[!f %in% g]
+## males
+m = unlist( obs_tsls_est$wNEO_male %>% filter( MR_P < 0.05/43 ) %>% dplyr::select(outcome) )
+m_specific = m[!m %in% g]
+## pool together
+mr_ass =  c(g,f_specific,m_specific) 
+
+##### sort by outcome
+# r = sort( mr_ass[grep("_r",mr_ass)] )
+# p = sort( mr_ass[grep("_p",mr_ass)] )
+# f = sort( mr_ass[grep("_f",mr_ass)] )
+# mr_ass = c(f, p, r)
+
+    
+```
+
+
+```{r}
+pcol_green = RColorBrewer::brewer.pal(8, "Greens")
+pcol_blue = RColorBrewer::brewer.pal(8, "Blues")
+######
+pcols = c(  pcol_blue[8:6],  
+            pcol_green[7:5] )
+
+# bgcol = paste0( RColorBrewer::brewer.pal(3, "Set1") , 99)
+bgcol = RColorBrewer::brewer.pal(3, "Set1") 
+
+p1 = dh_forrest_plot(data = long_sex %>% filter(dietary_state == "fasting"), 
+                alpha = 0.05/43, 
+                analysis_type = "tsls_wNEO",
+                arrange_by = "class",
+                title = "fasting", covariates = NA, confounders = NA,
+                outcome_label = "",
+                exposure_label = "",
+                filter_data = TRUE,
+                column_4_x = "analysis",
+                column_4_color = "analysis",
+                col_count = 1,
+                color_choices = pcols,
+                facet_variable = "metabolite",
+                facet_bg_label_color = bgcol[3],
+                facet_text_label_color = "white" )
+
+p2 = dh_forrest_plot(data = long_sex %>% filter(dietary_state == "postprandial"), 
+                alpha = 0.05/43, 
+                analysis_type = "tsls_wNEO",
+                arrange_by = "class",
+                title = "postprandial", covariates = NA, confounders = NA,
+                outcome_label = "",
+                exposure_label = "",
+                filter_data = TRUE,
+                column_4_x = "analysis",
+                column_4_color = "analysis",
+                col_count = 1,
+                color_choices = pcols,
+                facet_variable = "metabolite",
+                facet_bg_label_color = bgcol[2],
+                facet_text_label_color = "white" )
+
+p3 = dh_forrest_plot(data = long_sex %>% filter(dietary_state == "response"), 
+                alpha = 0.05/43, 
+                analysis_type = "tsls_wNEO",
+                arrange_by = "class",
+                title = "response", covariates = NA, confounders = NA,
+                outcome_label = "",
+                exposure_label = "",
+                filter_data = TRUE,
+                column_4_x = "analysis",
+                column_4_color = "analysis",
+                col_count = 1,
+                color_choices = pcols,
+                facet_variable = "metabolite",
+                facet_bg_label_color = bgcol[1],
+                facet_text_label_color = "white" )
+
+p4 = dh_forrest_plot(data = long_sex %>% filter(outcome %in% f_specific, dietary_state == "fasting" ), 
+                alpha = 0.05/43, 
+                analysis_type = "tsls_wNEO_female",
+                arrange_by = "class",
+                title = "female specific fasting", covariates = NA, confounders = NA,
+                outcome_label = "",
+                exposure_label = "",
+                filter_data = TRUE,
+                column_4_x = "analysis",
+                column_4_color = "analysis",
+                col_count = 1,
+                color_choices = pcols,
+                facet_variable = "metabolite",
+                facet_bg_label_color = bgcol[3],
+                facet_text_label_color = "white" )
+
+p5 = dh_forrest_plot(data = long_sex %>% filter(outcome %in% f_specific, dietary_state == "response" ), 
+                alpha = 0.05/43, 
+                analysis_type = "tsls_wNEO_female",
+                arrange_by = "class",
+                title = "female specific response", covariates = NA, confounders = NA,
+                outcome_label = "",
+                exposure_label = "",
+                filter_data = TRUE,
+                column_4_x = "analysis",
+                column_4_color = "analysis",
+                col_count = 1,
+                color_choices = pcols,
+                facet_variable = "metabolite",
+                facet_bg_label_color = bgcol[1],
+                facet_text_label_color = "white" )
+
+p6 = dh_forrest_plot(data = long_sex %>% filter(outcome %in% m_specific ), 
+                alpha = 0.05/43, 
+                analysis_type = "tsls_wNEO_male",
+                arrange_by = "class",
+                title = "male specific postprandial", covariates = NA, confounders = NA,
+                outcome_label = "",
+                exposure_label = "",
+                filter_data = TRUE,
+                column_4_x = "analysis",
+                column_4_color = "analysis",
+                col_count = 1,
+                color_choices = pcols,
+                facet_variable = "metabolite",
+                facet_bg_label_color = bgcol[2],
+                facet_text_label_color = "white" )
+
+
+
+
+```
+
+
+```{r, fig.width = 20, fig.height = 10}
+library(patchwork)
+
+( p1/p3 +  
+    plot_layout(heights = c(1.5,1), guides = 'collect') ) | p2 | ( p4/p5/p6 + 
+                                                                     plot_layout( heights = c(4,1,1), guides = 'collect')  )
+```
+
+
+```{r, fig.width = 20, fig.height = 10}
+library(patchwork)
+
+layout = "
+AACCDD
+AACCDD
+AACCDD
+AACCDD
+BBCCEE
+BBCCFF
+"
+
+myplot = p1 + p3 + p2 + p4 + p5 + p6 + plot_layout(design = layout, guides = 'collect')
+myplot
+```
+
+
+```{r}
+####################
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "figures/wNEO_MR_sex_forrestplot.pdf")
+####################
+pdf(file = f, width = 13, height = 8)
+myplot
+dev.off()
+
+```
+
+
+
+
+```{r}
+pcol_green = RColorBrewer::brewer.pal(8, "Greens")
+pcol_blue = RColorBrewer::brewer.pal(8, "Blues")
+######
+pcols = c(  pcol_blue[8:6],  
+            pcol_green[7:5] )
+
+# bgcol = paste0( RColorBrewer::brewer.pal(3, "Set1") , 99)
+bgcol = RColorBrewer::brewer.pal(3, "Set1") 
+
+p1 = dh_forrest_plot(data = long_data3 %>% filter(dietary_state == "fasting"), 
+                alpha = 0.05/43, 
+                analysis_type = "tsls_wNEO",
+                arrange_by = "class",
+                title = "fasting", covariates = NA, confounders = NA,
+                outcome_label = "",
+                exposure_label = "",
+                filter_data = TRUE,
+                column_4_x = "analysis",
+                column_4_color = "analysis",
+                col_count = 1,
+                color_choices = pcols,
+                facet_variable = "metabolite",
+                facet_bg_label_color = bgcol[3],
+                facet_text_label_color = "white" )
+
+p2 = dh_forrest_plot(data = long_data3 %>% filter(dietary_state == "postprandial"), 
+                alpha = 0.05/43, 
+                analysis_type = "tsls_wNEO",
+                arrange_by = "class",
+                title = "postprandial", covariates = NA, confounders = NA,
+                outcome_label = "",
+                exposure_label = "",
+                filter_data = TRUE,
+                column_4_x = "analysis",
+                column_4_color = "analysis",
+                col_count = 1,
+                color_choices = pcols,
+                facet_variable = "metabolite",
+                facet_bg_label_color = bgcol[2],
+                facet_text_label_color = "white" )
+
+p3 = dh_forrest_plot(data = long_data3 %>% filter(dietary_state == "response"), 
+                alpha = 0.05/43, 
+                analysis_type = "tsls_wNEO",
+                arrange_by = "class",
+                title = "response", covariates = NA, confounders = NA,
+                outcome_label = "",
+                exposure_label = "",
+                filter_data = TRUE,
+                column_4_x = "analysis",
+                column_4_color = "analysis",
+                col_count = 1,
+                color_choices = pcols,
+                facet_variable = "metabolite",
+                facet_bg_label_color = bgcol[1],
+                facet_text_label_color = "white" )
+
+
+
+```
+
+```{r, fig.width = 12, fig.height = 10}
+library(patchwork)
+
+layout = "
+AACC
+AACC
+AACC
+AACC
+BBCC
+BBCC
+"
+
+myplot = p1 + p3 + p2 + plot_layout(design = layout, guides = 'collect')
+myplot
+```
+
+
+```{r}
+####################
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "figures/wNEO_MR_sensitivity_forrestplot.pdf")
+####################
+pdf(file = f, width = 12, height = 8)
+myplot
+dev.off()
+
+```
+
+
+
+
+## Nightingale Health's forrest plot
+
+
+```{r, fig.width = 15, fig.height = 35}
+pcol_green = RColorBrewer::brewer.pal(8, "Greens")
+pcol_blue = RColorBrewer::brewer.pal(8, "Blues")
+######
+pcol = c(  pcol_green[5:7], pcol_blue[6:8]  )
+# temp$analysis = factor(temp$analysis, levels = levels(temp$analysis)[length(levels(temp$analysis)):1] )
+
+```
+
+```{r, fig.width = 10, fig.height = 35}
+
+##
+( plot1 = ggforestplot::forestplot(
+  df = temp %>% filter(dietary_state == "fasting"),
+  name = outcome,
+  estimate = beta,
+  se = se,
+  pvalue = pval,
+  psignif = 0.05/43,
+  title = "fasting",
+  xlab = "1 normalized SD increase in metabolite\nper 1 unit increase in BMI",
+  colour = analysis
+) +
+  scale_color_manual(values = pcol) +
+  theme(legend.position="right") +
+  ggforce::facet_col(
+    facets = ~class,
+    scales = "free_y",
+    space = "free"
+  ) +
+  guides(colour = guide_legend(override.aes = list(size=5)) )
+)
+
+```
+
+
+
+
+
+## Limit to response 
+
+```{r, fig.width = 7, fig.height = 6}
+w = grep("_r", long_data$outcome)
+dh_forrest_plot(data = long_data[w,], 
+                alpha = 0.05/43, 
+                analysis_type = "tsls_wNEO",
+                arrange_by = "pval",
+                title = NA, covariates = NA, confounders = NA,
+                outcome_label = "",
+                exposure_label = "",
+                filter_data = TRUE,
+                column_4_x = "analysis",
+                column_4_color = "analysis",
+                col_count = 1,
+                color_choices = pcols_2)
+```
+
+
+
+## Limit to response 
+
+```{r, fig.width = 15, fig.height = 8}
+w = grep("_r", long_data$outcome)
+dh_forrest_plot(data = long_data[w,], 
+                alpha = 0.05, 
+                analysis_type = "tsls_wNEO",
+                arrange_by = "pval",
+                title = NA, covariates = NA, confounders = NA,
+                outcome_label = "",
+                exposure_label = "",
+                filter_data = TRUE,
+                column_4_x = "analysis",
+                column_4_color = "analysis",
+                col_count = 3,
+                color_choices = pcols_2)
+```
+
+
+
+
+## Limit to fasting 
+
+```{r, fig.width = 7, fig.height = 8}
+w = grep("_f", long_data$outcome)
+dh_forrest_plot(data = long_data[w,], 
+                alpha = 0.05/43, 
+                analysis_type = "tsls_wNEO",
+                arrange_by = "pval",
+                title = NA, covariates = NA, confounders = NA,
+                outcome_label = "",
+                exposure_label = "",
+                filter_data = TRUE,
+                column_4_x = "analysis",
+                column_4_color = "analysis",
+                col_count = 1,
+                color_choices = pcols_2)
+```
+
+
+
+## Limit to postprandial 
+
+```{r, fig.width = 15, fig.height = 7}
+w = grep("_p", long_data$outcome)
+dh_forrest_plot(data = long_data[w,], 
+                alpha = 0.05/43, 
+                analysis_type = "tsls_wNEO",
+                arrange_by = "pval",
+                title = NA, covariates = NA, confounders = NA,
+                outcome_label = "",
+                exposure_label = "",
+                filter_data = TRUE,
+                column_4_x = "analysis",
+                column_4_color = "analysis",
+                col_count = 3,
+                color_choices = pcols_2)
+```
+
+
+## Limit to response BCAA
+
+```{r, fig.width = 6, fig.height = 6}
+w = which(long_data$outcome %in% c("leu_r","ile_r","val_r") )
+dh_forrest_plot(data = long_data[w,], 
+                alpha = 0.05/43, 
+                analysis_type = "tsls_wNEO",
+                arrange_by = "pval",
+                title = NA, covariates = NA, confounders = NA,
+                outcome_label = "",
+                exposure_label = "",
+                filter_data = FALSE,
+                column_4_x = "analysis",
+                column_4_color = "analysis",
+                col_count = 1,
+                color_choices = pcols_2)
+```
+
+
+## INCLUED SENSITIVITY ANALYSIS top results with the weighted NEO analysis
+
+```{r fig.width = 14, fig.height = 7, warning=FALSE, error=FALSE}
+# pcols = c( RColorBrewer::brewer.pal(8, "Greens")[8:5], RColorBrewer::brewer.pal(8, "Blues")[8:5]   )
+###
+pcol_green = RColorBrewer::brewer.pal(8, "Greens")
+pcol_blue = RColorBrewer::brewer.pal(8, "Blues")
+######
+pcols = c(  pcol_blue[8:6], pcol_green[6:4] )
+pcols = c(  pcol_blue[c(8,6,4)], pcol_green[c(8,6,4)] )
+
+##### sort by outcome
+u = unique(long_data3$outcome)
+r = u[grep("_r",u)]
+p = u[grep("_p",u)]
+f = u[grep("_f",u)]
+u = c(f,p,r)
+temp = long_data3
+temp$outcome = factor(temp$outcome, levels = u)
+##
+
+p = dh_forrest_plot(data = temp, 
+                alpha = 0.05/43, 
+                analysis_type = "tsls_wNEO",
+                arrange_by = "outcome",
+                title = NA, covariates = NA, confounders = NA,
+                outcome_label = "",
+                exposure_label = "",
+                filter_data = TRUE,
+                column_4_x = "analysis",
+                column_4_color = "analysis",
+                col_count = 3,
+                color_choices = pcols)
+
+####################
+# w = which(par_data[,1] == "results_dir")
+# resultsdir = par_data[w,2]
+# f = paste0(resultsdir, "figures/wNEO_SA_forrestplot.pdf")
+# ####################
+# pdf(file = f, width = 10, height = 5)
+# p
+# dev.off()
+
+p
+```
+
+
+#ggforestplot from Nightingale
+
+
+```{r, fig.width = 7, fig.height = 15}
+pcol_green = RColorBrewer::brewer.pal(8, "Greens")
+pcol_blue = RColorBrewer::brewer.pal(8, "Blues")
+######
+pcols = c(  pcol_blue[8:6], pcol_green[6:4] )
+pcols = c(  pcol_blue[c(8,6,4)], pcol_green[c(8,6,4)] )
+pcols = pcols[6:1]
+##
+ids = long_data3 %>% filter(analysis == "tsls_wNEO" & pval < 0.05/43) %>% pull(outcome)
+temp = long_data3 %>% filter(outcome %in% ids)
+temp$dietary_state = factor(temp$dietary_state, levels = c("fasting","postprandial","response"))
+##
+ggforestplot::forestplot(
+  df = temp,
+  name = outcome,
+  estimate = beta,
+  se = se,
+  pvalue = pval,
+  psignif = 0.05/43,
+  xlab = "1 normalized SD unit of metabolite change\nper 1 unit increase in BMI",
+  colour = analysis
+) +
+  scale_color_manual(values = pcols, 
+                     labels = c("wNEO","Leiderdorp","wNEOsa", "obs wNEO","obs Leiderdorp","obs wNEOsa")[6:1] ) +
+  ggforce::facet_col(
+    facets = ~dietary_state,
+    scales = "free_y",
+    space = "free"
+  ) +
+  theme(legend.position="top") +
+  labs(color = "state") +
+  scale_size_manual(values = 8)
+scale_size_identity()
+
+```
+
+```{r, fig.width = 6, fig.height=10}
+ids = long_data3 %>% filter(dietary_state == "response" & analysis == "tsls_wNEO" & pval <= 0.05 ) %>% pull(outcome)
+temp = long_data3 %>% filter(outcome %in% ids)
+temp = temp %>% mutate(sig = ifelse(pval < 0.05, "sig", "not_sig") )
+##
+
+p = dh_forrest_plot(data = temp, 
+                alpha = 0.05, 
+                analysis_type = "tsls_wNEO",
+                arrange_by = "pval",
+                title = NA, covariates = NA, confounders = NA,
+                outcome_label = "",
+                exposure_label = "",
+                filter_data = TRUE,
+                column_4_x = "analysis",
+                column_4_color = "analysis",
+                col_count = 1,
+                color_choices = pcols) +
+  scale_shape_manual(values = c( not_sig = 21, sig = 19), drop = FALSE, labels = c("P<0.05","P>0.05")) +
+  scale_color_manual(values = pcols, labels = c("MR wNEO","MR wNEO s.a.","MR Leiderdorp",
+                                "obs wNEO","obs wNEO s.a.","obs Leiderdorp")[6:1]  )
+p
+```
+
+```{r}
+####################
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "figures/wNEO_RESPONSE_forrestplot.pdf")
+####################
+pdf(file = f, width = 6, height = 10)
+p
+dev.off()
+
+```
+
+```{r}
+## Filter long data to wNEO MR only
+Ldata = long_data
+## which analysis are from weighted NEO and Leiderdorp
+w = which(Ldata$analysis %in% c("tsls_wNEO") )
+## re-define
+Ldata = Ldata[w,]
+## define factor
+Ldata$dietary_state = factor(Ldata$dietary_state, levels = c("response","postprandial","fasting") )
+```
+
+```{r, fig.width = 10, fig.height = 10}
+pcol = RColorBrewer::brewer.pal(8, "Set1")
+##
+Pdata = as_tibble( Ldata %>% filter(class == "Amino acids") )
+##
+p = ggforestplot::forestplot(
+  df = Pdata,
+  name = metabolite,
+  estimate = beta,
+  se = se,
+  pvalue = pval,
+  psignif = 0.05/43,
+  xlab = "normalized SD units of metabolite variation\nper 1 unit increase in BMI",
+  colour = dietary_state
+) +
+  scale_color_manual(values = pcol[1:3]) +
+  ggforce::facet_col(
+    facets = ~subclass,
+    scales = "free_y",
+    space = "free"
+  ) +
+  theme(legend.position="top") +
+  labs(color = "dietary state")
+
+p
+```
+
+```{r}
+####################
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "figures/wNEO_AminoAcid_forrestplot.pdf")
+####################
+pdf(file = f, width = 5, height = 6)
+p
+dev.off()
+```
+
+
+
+
+
+```{r, fig.width = 7, fig.height = 25}
+pcol = RColorBrewer::brewer.pal(8, "Set1")
+##
+Pdata = as_tibble( Ldata %>% filter( !grepl("Lipoprotein", class) ) )
+##
+plot1 = ggforestplot::forestplot(
+  df = Pdata,
+  name = metabolite,
+  estimate = beta,
+  se = se,
+  pvalue = pval,
+  psignif = 0.05/43,
+  xlab = "1 normalized SD increase in metabolite\nper 1 unit increase in BMI",
+  colour = dietary_state
+) +
+  scale_color_manual(values = pcol[3:1]) +
+  theme(legend.position="top") +
+  ggforce::facet_col(
+    facets = ~subclass,
+    scales = "free_y",
+    space = "free"
+  )
+
+plot1
+```
+
+
+
+
+
+```{r, fig.width = 6, fig.height = 15}
+pcol = RColorBrewer::brewer.pal(8, "Set1")
+##
+Pdata = as_tibble( Ldata %>% filter( !grepl("Lipoprotein", class) ) )
+sc = sort( unique( Pdata$subclass ) )[1:6]
+w = which(Pdata$subclass %in% sc)
+##
+plot1 = ggforestplot::forestplot(
+  df = Pdata[w,],
+  name = metabolite,
+  estimate = beta,
+  se = se,
+  pvalue = pval,
+  psignif = 0.05/43,
+  xlab = "1 normalized SD increase in metabolite\nper 1 unit increase in BMI",
+  colour = dietary_state
+) +
+  scale_color_manual(values = pcol) +
+  theme(legend.position="top") +
+  ggforce::facet_col(
+    facets = ~subclass,
+    scales = "free_y",
+    space = "free"
+  ) +
+  guides(colour = guide_legend(override.aes = list(size=5))) 
+
+plot1
+```
+
+
+
+```{r, fig.width = 6, fig.height = 15}
+pcol = RColorBrewer::brewer.pal(8, "Set1")
+##
+Pdata = as_tibble( Ldata %>% filter( !grepl("Lipoprotein", class) ) )
+sc = sort( unique( Pdata$subclass ) )[7:13]
+w = which(Pdata$subclass %in% sc)
+##
+plot2 = ggforestplot::forestplot(
+  df = Pdata[w,],
+  name = metabolite,
+  estimate = beta,
+  se = se,
+  pvalue = pval,
+  psignif = 0.05/43,
+  xlab = "1 normalized SD increase in metabolite\nper 1 unit increase in BMI",
+  colour = dietary_state
+) +
+  scale_color_manual(values = pcol) +
+  theme(legend.position="top") +
+  ggforce::facet_col(
+    facets = ~subclass,
+    scales = "free_y",
+    space = "free"
+  ) +
+  guides(colour = guide_legend(override.aes = list(size=5))) 
+
+plot2
+```
+
+
+
+```{r, fig.width = 6, fig.height = 15}
+pcol = RColorBrewer::brewer.pal(8, "Set1")
+##
+Pdata = as_tibble( Ldata %>% filter( grepl("Lipoprotein", class) & !grepl("Lipoprotein subclasses ratios", class) ) )
+Pdata$subclass = factor(Pdata$subclass, levels = c("Lipoprotein particle size",
+                                                   "Extremely large VLDL","Very large VLDL","Large VLDL",
+                                                   "Medium VLDL", "Small VLDL", "Very Small VLDL",
+                                                   "IDL",
+                                                   "Large LDL","Medium LDL","Small LDL",
+                                                   "Very large HDL", "Large HDL", "Medium HDL", "Small HDL") )
+sc = levels( Pdata$subclass )[1:7]
+w = which(Pdata$subclass %in% sc)
+
+##
+plot3 = ggforestplot::forestplot(
+  df = Pdata[w,],
+  name = metabolite,
+  estimate = beta,
+  se = se,
+  pvalue = pval,
+  psignif = 0.05/43,
+  xlab = "1 normalized SD increase in metabolite\nper 1 unit increase in BMI",
+  colour = dietary_state
+) +
+  scale_color_manual(values = pcol) +
+  theme(legend.position="top") +
+  ggforce::facet_col(
+    facets = ~subclass,
+    scales = "free_y",
+    space = "free"
+  ) +
+  guides(colour = guide_legend(override.aes = list(size=5))) 
+
+plot3
+```
+
+
+
+
+
+```{r, fig.width = 6, fig.height = 15}
+pcol = RColorBrewer::brewer.pal(8, "Set1")
+##
+Pdata = as_tibble( Ldata %>% filter( grepl("Lipoprotein", class) & !grepl("Lipoprotein subclasses ratios", class) ) )
+Pdata$subclass = factor(Pdata$subclass, levels = c("Lipoprotein particle size",
+                                                   "Extremely large VLDL","Very large VLDL","Large VLDL",
+                                                   "Medium VLDL", "Small VLDL", "Very Small VLDL",
+                                                   "IDL",
+                                                   "Large LDL","Medium LDL","Small LDL",
+                                                   "Very large HDL", "Large HDL", "Medium HDL", "Small HDL") )
+sc = levels( Pdata$subclass )[8:15]
+w = which(Pdata$subclass %in% sc)
+
+##
+plot4 = ggforestplot::forestplot(
+  df = Pdata[w,],
+  name = metabolite,
+  estimate = beta,
+  se = se,
+  pvalue = pval,
+  psignif = 0.05/43,
+  xlab = "1 normalized SD increase in metabolite\nper 1 unit increase in BMI",
+  colour = dietary_state
+) +
+  scale_color_manual(values = pcol) +
+  theme(legend.position="top") +
+  ggforce::facet_col(
+    facets = ~subclass,
+    scales = "free_y",
+    space = "free"
+  ) +
+  guides(colour = guide_legend(override.aes = list(size=5))) 
+  
+
+plot4
+```
+
+
+
+```{r fig.width = 15, fig.height = 15}
+####################
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "figures/wNEO_all_forrestplot.pdf")
+####################
+pdf(file = f, width = 15, height = 15)
+ggpubr::ggarrange(plot1, plot2, plot3, plot4, ncol = 4, common.legend = TRUE) 
+dev.off()
+
+
+```
+
+
+
+```{r, fig.width = 6, fig.height = 15}
+pcol = RColorBrewer::brewer.pal(8, "Set1")
+##
+Pdata = as_tibble( Ldata %>% filter( grepl("Lipoprotein subclasses ratios", class) ) )
+Pdata$subclass = factor(Pdata$subclass, levels = unique(Pdata$subclass) )
+
+sc = levels( Pdata$subclass )[1:7]
+w = which(Pdata$subclass %in% sc)
+
+##
+plot5 = ggforestplot::forestplot(
+  df = Pdata[w,],
+  name = metabolite,
+  estimate = beta,
+  se = se,
+  pvalue = pval,
+  psignif = 0.05/43,
+  xlab = "1 normalized SD increase in metabolite\nper 1 unit increase in BMI",
+  colour = dietary_state
+) +
+  scale_color_manual(values = pcol) +
+  theme(legend.position="top") +
+  ggforce::facet_col(
+    facets = ~subclass,
+    scales = "free_y",
+    space = "free"
+  ) +
+  guides(colour = guide_legend(override.aes = list(size=5))) 
+
+plot5
+```
+
+
+
+
+```{r, fig.width = 6, fig.height = 15}
+pcol = RColorBrewer::brewer.pal(8, "Set1")
+##
+Pdata = as_tibble( Ldata %>% filter( grepl("Lipoprotein subclasses ratios", class) ) )
+Pdata$subclass = factor(Pdata$subclass, levels = unique(Pdata$subclass) )
+
+sc = levels( Pdata$subclass )[8:14]
+w = which(Pdata$subclass %in% sc)
+
+##
+plot6 = ggforestplot::forestplot(
+  df = Pdata[w,],
+  name = metabolite,
+  estimate = beta,
+  se = se,
+  pvalue = pval,
+  psignif = 0.05/43,
+  xlab = "1 normalized SD increase in metabolite\nper 1 unit increase in BMI",
+  colour = dietary_state
+) +
+  scale_color_manual(values = pcol) +
+  theme(legend.position="top") +
+  ggforce::facet_col(
+    facets = ~subclass,
+    scales = "free_y",
+    space = "free"
+  ) +
+  guides(colour = guide_legend(override.aes = list(size=5))) 
+
+plot6
+```
+
+
+
+```{r fig.width = 15, fig.height = 15}
+####################
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "figures/wNEO_all_forrestplot_ALL.pdf")
+####################
+pdf(file = f, width = 20, height = 15)
+ggpubr::ggarrange(plot1, plot2, plot3, plot4, plot5, plot6, ncol = 6, common.legend = TRUE) 
+dev.off()
+
+
+```
+
+
+
+# Observational forest plot for ALL metabolites
+
+
+```{r}
+## Filter long data to wNEO MR only
+Ldata = long_data
+## which analysis are from weighted NEO and Leiderdorp
+w = which(Ldata$analysis %in% c("obs_wNEO") )
+## re-define
+Ldata = Ldata[w,]
+## define factor
+Ldata$dietary_state = factor(Ldata$dietary_state, levels = c("response","postprandial","fasting") )
+```
+
+
+```{r, fig.width = 6, fig.height = 15}
+pcol = RColorBrewer::brewer.pal(8, "Set1")
+##
+Pdata = as_tibble( Ldata %>% filter( !grepl("Lipoprotein", class) ) )
+sc = sort( unique( Pdata$subclass ) )[1:6]
+w = which(Pdata$subclass %in% sc)
+##
+plot1 = ggforestplot::forestplot(
+  df = Pdata[w,],
+  name = metabolite,
+  estimate = beta,
+  se = se,
+  pvalue = pval,
+  psignif = 0.05/43,
+  xlab = "1 normalized SD increase in metabolite\nper 1 unit increase in BMI",
+  colour = dietary_state
+) +
+  scale_color_manual(values = pcol) +
+  theme(legend.position="top") +
+  ggforce::facet_col(
+    facets = ~subclass,
+    scales = "free_y",
+    space = "free"
+  ) +
+  guides(colour = guide_legend(override.aes = list(size=5))) 
+
+plot1
+```
+
+
+
+```{r, fig.width = 6, fig.height = 15}
+pcol = RColorBrewer::brewer.pal(8, "Set1")
+##
+Pdata = as_tibble( Ldata %>% filter( !grepl("Lipoprotein", class) ) )
+sc = sort( unique( Pdata$subclass ) )[7:13]
+w = which(Pdata$subclass %in% sc)
+##
+plot2 = ggforestplot::forestplot(
+  df = Pdata[w,],
+  name = metabolite,
+  estimate = beta,
+  se = se,
+  pvalue = pval,
+  psignif = 0.05/43,
+  xlab = "1 normalized SD increase in metabolite\nper 1 unit increase in BMI",
+  colour = dietary_state
+) +
+  scale_color_manual(values = pcol) +
+  theme(legend.position="top") +
+  ggforce::facet_col(
+    facets = ~subclass,
+    scales = "free_y",
+    space = "free"
+  ) +
+  guides(colour = guide_legend(override.aes = list(size=5))) 
+```
+
+
+
+```{r, fig.width = 6, fig.height = 15}
+pcol = RColorBrewer::brewer.pal(8, "Set1")
+##
+Pdata = as_tibble( Ldata %>% filter( grepl("Lipoprotein", class) & !grepl("Lipoprotein subclasses ratios", class) ) )
+Pdata$subclass = factor(Pdata$subclass, levels = c("Lipoprotein particle size",
+                                                   "Extremely large VLDL","Very large VLDL","Large VLDL",
+                                                   "Medium VLDL", "Small VLDL", "Very Small VLDL",
+                                                   "IDL",
+                                                   "Large LDL","Medium LDL","Small LDL",
+                                                   "Very large HDL", "Large HDL", "Medium HDL", "Small HDL") )
+sc = levels( Pdata$subclass )[1:7]
+w = which(Pdata$subclass %in% sc)
+
+##
+plot3 = ggforestplot::forestplot(
+  df = Pdata[w,],
+  name = metabolite,
+  estimate = beta,
+  se = se,
+  pvalue = pval,
+  psignif = 0.05/43,
+  xlab = "1 normalized SD increase in metabolite\nper 1 unit increase in BMI",
+  colour = dietary_state
+) +
+  scale_color_manual(values = pcol) +
+  theme(legend.position="top") +
+  ggforce::facet_col(
+    facets = ~subclass,
+    scales = "free_y",
+    space = "free"
+  ) +
+  guides(colour = guide_legend(override.aes = list(size=5))) 
+```
+
+
+
+```{r, fig.width = 6, fig.height = 15}
+pcol = RColorBrewer::brewer.pal(8, "Set1")
+##
+Pdata = as_tibble( Ldata %>% filter( grepl("Lipoprotein", class) & !grepl("Lipoprotein subclasses ratios", class) ) )
+Pdata$subclass = factor(Pdata$subclass, levels = c("Lipoprotein particle size",
+                                                   "Extremely large VLDL","Very large VLDL","Large VLDL",
+                                                   "Medium VLDL", "Small VLDL", "Very Small VLDL",
+                                                   "IDL",
+                                                   "Large LDL","Medium LDL","Small LDL",
+                                                   "Very large HDL", "Large HDL", "Medium HDL", "Small HDL") )
+sc = levels( Pdata$subclass )[8:15]
+w = which(Pdata$subclass %in% sc)
+
+##
+plot4 = ggforestplot::forestplot(
+  df = Pdata[w,],
+  name = metabolite,
+  estimate = beta,
+  se = se,
+  pvalue = pval,
+  psignif = 0.05/43,
+  xlab = "1 normalized SD increase in metabolite\nper 1 unit increase in BMI",
+  colour = dietary_state
+) +
+  scale_color_manual(values = pcol) +
+  theme(legend.position="top") +
+  ggforce::facet_col(
+    facets = ~subclass,
+    scales = "free_y",
+    space = "free"
+  ) +
+  guides(colour = guide_legend(override.aes = list(size=5))) 
+  
+```
+
+
+
+```{r, fig.width = 6, fig.height = 15}
+pcol = RColorBrewer::brewer.pal(8, "Set1")
+##
+Pdata = as_tibble( Ldata %>% filter( grepl("Lipoprotein subclasses ratios", class) ) )
+Pdata$subclass = factor(Pdata$subclass, levels = unique(Pdata$subclass) )
+
+sc = levels( Pdata$subclass )[1:7]
+w = which(Pdata$subclass %in% sc)
+
+##
+plot5 = ggforestplot::forestplot(
+  df = Pdata[w,],
+  name = metabolite,
+  estimate = beta,
+  se = se,
+  pvalue = pval,
+  psignif = 0.05/43,
+  xlab = "1 normalized SD increase in metabolite\nper 1 unit increase in BMI",
+  colour = dietary_state
+) +
+  scale_color_manual(values = pcol) +
+  theme(legend.position="top") +
+  ggforce::facet_col(
+    facets = ~subclass,
+    scales = "free_y",
+    space = "free"
+  ) +
+  guides(colour = guide_legend(override.aes = list(size=5))) 
+```
+
+
+
+
+```{r, fig.width = 6, fig.height = 15}
+pcol = RColorBrewer::brewer.pal(8, "Set1")
+##
+Pdata = as_tibble( Ldata %>% filter( grepl("Lipoprotein subclasses ratios", class) ) )
+Pdata$subclass = factor(Pdata$subclass, levels = unique(Pdata$subclass) )
+
+sc = levels( Pdata$subclass )[8:14]
+w = which(Pdata$subclass %in% sc)
+
+##
+plot6 = ggforestplot::forestplot(
+  df = Pdata[w,],
+  name = metabolite,
+  estimate = beta,
+  se = se,
+  pvalue = pval,
+  psignif = 0.05/43,
+  xlab = "1 normalized SD increase in metabolite\nper 1 unit increase in BMI",
+  colour = dietary_state
+) +
+  scale_color_manual(values = pcol) +
+  theme(legend.position="top") +
+  ggforce::facet_col(
+    facets = ~subclass,
+    scales = "free_y",
+    space = "free"
+  ) +
+  guides(colour = guide_legend(override.aes = list(size=5))) 
+```
+
+
+
+```{r fig.width = 15, fig.height = 15}
+####################
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "figures/wNEO_OBS_forrestplot_ALL.pdf")
+####################
+pdf(file = f, width = 20, height = 15)
+ggpubr::ggarrange(plot1, plot2, plot3, plot4, plot5, plot6, ncol = 6, common.legend = TRUE) 
+dev.off()
+
+
+```
+
+
+
+
+
+
+
+
+
+
+## compare OBS and MR estimates in wNEO
+
+```{r}
+## define working data
+wdata = data.frame( outcome = obs_tsls_est$wNEO$outcome,
+                    obs_beta = obs_tsls_est$wNEO$Obs_beta, 
+                    obs_P = obs_tsls_est$wNEO$Obs_P,
+                    MR_beta = obs_tsls_est$wNEO$MR_beta, 
+                    MR_P = obs_tsls_est$wNEO$MR_P,
+                    dietary_state = "fasting")
+w = grep("_p", wdata$outcome); wdata$dietary_state[w] = "postprandial"
+w = grep("_r", wdata$outcome); wdata$dietary_state[w] = "response"
+
+wdata$dietary_state = factor(wdata$dietary_state, levels = c("response","postprandial","fasting"))
+```
+
+```{r}
+lm_ests = wdata %>% group_by(dietary_state) %>% 
+  summarise( beta = summary(lm(MR_beta ~ 1+ obs_beta))$coef[2,1],
+             se = summary(lm(MR_beta ~ 1+ obs_beta))$coef[2,2],
+             P = summary(lm(MR_beta ~ 1+ obs_beta))$coef[2,2],
+             intercept = summary(lm(MR_beta ~ 1+  obs_beta))$coef[1,1],
+             intercept_se = summary(lm(MR_beta ~ 1+  obs_beta))$coef[1,2])
+
+lm_ests
+
+```
+
+```{r}
+sp_cor = wdata %>% group_by(dietary_state) %>% 
+  summarise( rho = cor.test(obs_beta, MR_beta, method = "sp")$estimate )
+
+sp_cor$rho = signif(sp_cor$rho, d = 3)
+
+sp_cor
+
+```
+
+
+```{r, fig.width = 10, fig.height = 4}
+ptext = data.frame( sp_cor = paste0( "Spearman rho\n", sp_cor$rho) ,
+                      dietary_state = c( "response", "postprandial", "fasting"),
+                      x = 0.05, y = -0.075 )
+ptext$dietary_state = factor(ptext$dietary_state, levels = c("response","postprandial","fasting"))
+
+######
+
+p = wdata %>% ggplot(aes(x = obs_beta, y = MR_beta)) +
+  geom_hline(yintercept = 0, color = "grey50", linetype = "solid", size = 0.5) +
+  geom_vline(xintercept = 0, color = "grey50", linetype = "solid", size = 0.5) +
+  geom_abline(intercept = 0, slope = 1, color = "grey50", linetype = "solid", size = 1.25) +
+  # geom_point(aes(color = dietary_state, size = -log10(wNEO_P))) +
+  geom_point(aes(color = dietary_state), size = 3, alpha = 0.5) +
+  geom_smooth(aes(color = dietary_state), method = "lm", formula = y~x) +
+  labs(x = "observational estimate", y = "MR estimate") +
+  facet_wrap(~ dietary_state) +
+  scale_color_brewer(palette = "Set1") +
+  geom_text(aes(label = outcome ),color = "grey30",  size = 3, check_overlap = TRUE) +
+  theme_bw() + 
+  geom_text( data = ptext, 
+               mapping = aes(color = dietary_state, 
+                             x = x, 
+                             y = y, 
+                             label = sp_cor) ) 
+####################
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "figures/wNEO_obs_mr_scatterplot_byState.pdf")
+####################
+# pdf(file = f, width = 10, height = 3)
+# p
+# dev.off()
+
+p
+```
+
+
+
+## compare OBS estimates between wNEO & Leiderdorp 
+
+```{r}
+## define working data
+wdata = data.frame( outcome = obs_tsls_est$wNEO$outcome,
+                    wNEO_beta = obs_tsls_est$wNEO$Obs_beta, 
+                    wNEO_P = obs_tsls_est$wNEO$Obs_P,
+                    Leiderdorp_beta = obs_tsls_est$Leiderdorp$Obs_beta,
+                    Leiderdorp_P = obs_tsls_est$Leiderdorp$Obs_P,
+                    dietary_state = "fasting")
+w = grep("_p", wdata$outcome); wdata$dietary_state[w] = "postprandial"
+w = grep("_r", wdata$outcome); wdata$dietary_state[w] = "response"
+
+wdata$dietary_state = factor(wdata$dietary_state, levels = c("response","postprandial","fasting"))
+```
+
+
+```{r}
+sp_cor = wdata %>% group_by(dietary_state) %>% 
+  summarise( rho = cor.test(wNEO_beta, Leiderdorp_beta, method = "sp")$estimate )
+
+sp_cor$rho = signif(sp_cor$rho, d = 3)
+
+sp_cor
+
+```
+
+
+```{r, fig.width = 10, fig.height = 4}
+ptext = data.frame( sp_cor = paste0( "Spearman rho\n", sp_cor$rho) ,
+                      dietary_state = c( "response", "postprandial", "fasting"),
+                      x = 0.05, y = -0.075 )
+ptext$dietary_state = factor(ptext$dietary_state, levels = c("response","postprandial","fasting"))
+
+######
+
+wdata %>% ggplot(aes(x = wNEO_beta, y = Leiderdorp_beta)) +
+  geom_hline(yintercept = 0, color = "grey50", linetype = "solid", size = 0.5) +
+  geom_vline(xintercept = 0, color = "grey50", linetype = "solid", size = 0.5) +
+  geom_abline(intercept = 0, slope = 1, color = "grey50", linetype = "solid", size = 1.25) +
+  # geom_point(aes(color = dietary_state, size = -log10(wNEO_P))) +
+  geom_point(aes(color = dietary_state), size = 3, alpha = 0.5) +
+  geom_smooth(aes(color = dietary_state), method = "lm", formula = y~x) +
+  facet_wrap(~ dietary_state) +
+  scale_color_brewer(palette = "Set1") +
+  geom_text(aes(label = outcome ),color = "grey30",  size = 3, check_overlap = TRUE) +
+  theme_bw() + 
+  geom_text( data = ptext, 
+               mapping = aes(color = dietary_state, 
+                             x = x, 
+                             y = y, 
+                             label = sp_cor) ) 
+
+```
+
+## compare MR estimates between wNEO & Leiderdorp 
+
+```{r}
+## define working data
+wdata = data.frame( outcome = obs_tsls_est$wNEO$outcome,
+                    wNEO_beta = obs_tsls_est$wNEO$MR_beta, 
+                    wNEO_P = obs_tsls_est$wNEO$MR_P,
+                    Leiderdorp_beta = obs_tsls_est$Leiderdorp$MR_beta,
+                    Leiderdorp_P = obs_tsls_est$Leiderdorp$MR_P,
+                    dietary_state = "fasting")
+w = grep("_p", wdata$outcome); wdata$dietary_state[w] = "postprandial"
+w = grep("_r", wdata$outcome); wdata$dietary_state[w] = "response"
+
+wdata$dietary_state = factor(wdata$dietary_state, levels = c("response","postprandial","fasting"))
+```
+
+
+```{r}
+sp_cor = wdata %>% group_by(dietary_state) %>% 
+  summarise( rho = cor.test(wNEO_beta, Leiderdorp_beta, method = "sp")$estimate )
+
+sp_cor$rho = signif(sp_cor$rho, d = 3)
+sp_cor
+```
+
+
+```{r, fig.width = 10, fig.height = 4}
+ptext = data.frame( sp_cor = paste0( "Spearman rho\n", sp_cor$rho) ,
+                      dietary_state = c("response","postprandial", "fasting"),
+                      x = 0.05, y = -0.075 )
+ptext$dietary_state = factor(ptext$dietary_state, levels = c("response","postprandial","fasting"))
+
+######
+
+wdata %>% ggplot(aes(x = wNEO_beta, y = Leiderdorp_beta)) +
+  geom_hline(yintercept = 0, color = "grey50", linetype = "solid", size = 0.5) +
+  geom_vline(xintercept = 0, color = "grey50", linetype = "solid", size = 0.5) +
+  geom_abline(intercept = 0, slope = 1, color = "grey50", linetype = "solid", size = 1.25) +
+  # geom_point(aes(color = dietary_state, size = -log10(wNEO_P))) +
+  geom_point(aes(color = dietary_state), size = 3, alpha = 0.5) +
+  geom_smooth(aes(color = dietary_state), method = "lm", formula = y~x) +
+  facet_wrap(~ dietary_state) +
+  scale_color_brewer(palette = "Set1") +
+  geom_text(aes(label = outcome ),color = "grey30",  size = 3, check_overlap = TRUE) +
+  theme_bw() + 
+  geom_text( data = ptext, 
+               mapping = aes(color = dietary_state, 
+                             x = x, 
+                             y = y, 
+                             label = sp_cor) ) 
+
+```
+
+
+```{r, fig.width = 10, fig.height = 4}
+library(ggrepel)
+
+wdata %>% ggplot(aes(x = wNEO_beta, y = Leiderdorp_beta)) +
+  geom_hline(yintercept = 0, color = "grey50", linetype = "solid", size = 0.5) +
+  geom_vline(xintercept = 0, color = "grey50", linetype = "solid", size = 0.5) +
+  geom_abline(intercept = 0, slope = 1, color = "grey50", linetype = "solid", size = 1.25) +
+  # geom_point(aes(color = dietary_state, size = -log10(wNEO_P))) +
+  geom_point(aes(color = dietary_state), size = 3, alpha = 0.5) +
+  geom_smooth(aes(color = dietary_state), method = "lm", formula = y~x) +
+  geom_text_repel( data = filter( wdata, wNEO_P < 0.05/25 ), 
+                  aes(label=outcome), min.segment.length = 0, box.padding = 0.5 ) +
+  facet_wrap(~ dietary_state) +
+  scale_color_brewer(palette = "Set1") +
+  theme_bw() +
+  geom_text( data = ptext, 
+               mapping = aes(color = dietary_state, 
+                             x = x, 
+                             y = y, 
+                             label = sp_cor) )
+
+```
+
+
+## compare NEO to Leiderdorp estimates
+
+```{r}
+## define working data
+wdata = data.frame( outcome = obs_tsls_est$wNEO$outcome,
+                    NEO_beta = obs_tsls_est$NEO$MR_beta, 
+                    NEO_P = obs_tsls_est$NEO$MR_P,
+                    Leiderdorp_beta = obs_tsls_est$Leiderdorp$MR_beta,
+                    Leiderdorp_P = obs_tsls_est$Leiderdorp$MR_P,
+                    dietary_state = "fasting")
+w = grep("_p", wdata$outcome); wdata$dietary_state[w] = "postprandial"
+w = grep("_r", wdata$outcome); wdata$dietary_state[w] = "response"
+```
+
+
+```{r}
+sp_cor = wdata %>% group_by(dietary_state) %>% 
+  summarise( rho = cor.test(NEO_beta, Leiderdorp_beta, method = "sp")$estimate )
+
+sp_cor$rho = signif(sp_cor$rho, d = 3)
+```
+
+
+```{r, fig.width = 12, fig.height = 4}
+ptext = data.frame( sp_cor = paste0( "Spearman rho\n", sp_cor$rho) ,
+                      dietary_state = c("fasting", "postprandial", "response"),
+                      x = 0.04, y = -0.075 )
+
+######
+
+wdata %>% ggplot(aes(x = NEO_beta, y = Leiderdorp_beta)) +
+  geom_abline(intercept = 0, slope = 1, color = "grey50", linetype = "solid", size = 1.25) +
+  geom_point(aes(color = dietary_state), size = 3, alpha = 0.5) +
+  geom_smooth(aes(color = dietary_state), method = "lm", formula = y~x) +
+  facet_wrap(~ dietary_state) +
+  scale_color_brewer(palette = "Set1") +
+  geom_text(aes(label = outcome ),color = "grey30",  size = 3, check_overlap = TRUE) +
+  theme_bw() + 
+  geom_text( data = ptext, 
+               mapping = aes(color = dietary_state, 
+                             x = x, 
+                             y = y, 
+                             label = sp_cor) ) 
+
+```
+
+
+```{r, fig.width = 12, fig.height = 4}
+library(ggrepel)
+
+wdata %>% ggplot(aes(x = NEO_beta, y = Leiderdorp_beta)) +
+  geom_abline(intercept = 0, slope = 1, color = "grey50", linetype = "solid", size = 1.25) +
+  geom_point(aes(color = dietary_state), size = 3, alpha = 0.5) +
+  geom_smooth(aes(color = dietary_state), method = "lm", formula = y~x) +
+  geom_text_repel( data = filter( wdata, NEO_P < 0.05/40 ), 
+                  aes(label=outcome) ) +
+  facet_wrap(~ dietary_state) +
+  scale_color_brewer(palette = "Set1") +
+  theme_bw() +
+  geom_text( data = ptext, 
+               mapping = aes(color = dietary_state, 
+                             x = x, 
+                             y = y, 
+                             label = sp_cor) )
+
+```
+
+
+## Response Traits
+
+### define data
+
+```{r}
+temp_data = data.frame(fasting = mydata$ala_f, postprandial = mydata$ala_p,
+                       response = mydata$ala_r,
+                       bmi = mydata$bmi, grs = mydata$Yengo_Weighted_GRS, 
+                       batch = mydata$visit_date, age = mydata$age, sex = mydata$sex)
+#########
+temp_data = data.frame(fasting = mydata$leu_f, postprandial = mydata$leu_p,
+                       response = mydata$leu_r,
+                       bmi = mydata$bmi, grs = mydata$Yengo_Weighted_GRS,
+                       batch = mydata$visit_date, age = mydata$age, sex = mydata$sex)
+
+## limit data to Leiderdorp sample
+w = which(mydata$subpop == "Leiderdorp")
+temp_data = temp_data[w, ]
+## normal weight
+temp_data$class = "healthy weight"
+## overweight
+w = which(temp_data$bmi >= 25 & temp_data$bmi < 30 )
+temp_data$class[w] = "overweight"
+## overweight
+w = which(temp_data$bmi >= 30 )
+temp_data$class[w] = "obese"
+## factor order the weight classes
+temp_data$class = factor(temp_data$class, levels = c("healthy weight","overweight","obese"))
+
+```
+
+```{r}
+fit = lm(postprandial ~ batch + sex + age + bmi + fasting , data = temp_data)
+####
+qf = quantile(temp_data$fasting, probs = c(0.02, 0.98) , na.rm = TRUE)
+qp = quantile(temp_data$postprandial, probs = c(0.02, 0.98) , na.rm = TRUE)
+bmi_v = c(18 , 25 , 35 )
+#### simulated
+ndata = expand.grid( batch = "12-01", sex = "male", age = 55, 
+                    fasting = seq(qf[1],qf[2],by = 0.001),
+                    bmi = bmi_v)
+#### prediction
+ndata$postprandial = predict(fit, newdata = ndata)
+
+```
+
+```{r}
+ndata %>% ggplot( aes(x = fasting, y = postprandial) ) +
+  #geom_point(aes(color = as.factor(bmi)),  shape = 19, size = 2, alpha = 1) +
+  geom_smooth(method = "lm", formula = y~x, aes(color = as.factor(bmi)), size = 2) +
+  scale_colour_brewer("BMI", palette = "Set1") +
+  theme_bw() +
+  theme(legend.position = "top") 
+  
+```
+
+
+```{r, fig.width = 15, fig.height = 6}
+pcol = RColorBrewer::brewer.pal(8, "Set1")
+
+####
+p1 = temp_data %>% filter(bmi < 38) %>% ggplot( aes(x = bmi, y = response)  ) +
+  geom_point(color = "grey60",  shape = 19, size = 2, alpha = 1) +
+  geom_smooth(method = "lm", formula = y~x,  size = 2) +
+  #geom_smooth(method = "loess", formula = y~x,  size = 2) +
+  theme_bw()
+  
+p2 = temp_data %>% ggplot( aes(x = fasting, y = postprandial) ) +
+  geom_point(color = "grey60",  shape = 19, size = 2, alpha = 1) +
+  geom_smooth(method = "lm", formula = y~x, aes(color = class), size = 2) +
+  scale_colour_brewer("BMI classs", palette = "Set1") +
+  theme_bw() +
+  theme(legend.position = "top") 
+  
+
+ggpubr::ggarrange(p1, p2, nrow = 1)
+```
+
+```{r}
+Leiderdorp = grep("Leiderdorp", mydata$subpop)
+temp = mydata[Leiderdorp, ]
+
+A = obsmr( wdata = temp,
+            outcome = "ala_r",
+            exposure = "bmi",
+            instrument = "Yengo_Weighted_GRS",
+            covariates = c("visit_date","age","sex"),
+            weights = NA,
+            rnt_outcome = TRUE,
+            outlier_method = "iqr",
+            outlier_cutoff = 5,
+            messages = TRUE)
+
+##################################
+temp = temp %>% filter(bmi < 38)
+
+B = obsmr( wdata = temp,
+            outcome = "ala_r",
+            exposure = "bmi",
+            instrument = "Yengo_Weighted_GRS",
+            covariates = c("visit_date","age","sex"),
+            weights = NA,
+            rnt_outcome = TRUE,
+            outlier_method = "iqr",
+            outlier_cutoff = 5,
+            messages = TRUE)
+```
+
+
+```{r, fig.width = 8, fig.height = 6}
+p2
+```
+

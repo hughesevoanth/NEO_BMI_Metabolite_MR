@@ -1,0 +1,1574 @@
+---
+title: "NEO BMI-Metabolite Exploring MR Point Estimate Results"
+author: "David Hughes"
+date: "2/6/2021"
+output: 
+  pdf_document:
+    number_sections: true
+---
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set( echo = TRUE, error = FALSE, warning = FALSE, message = FALSE)
+
+source("LOAD.R")
+
+```
+
+## Load point estimates
+
+```{r}
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+
+f = paste0(resultsdir, "obs_tsls_estimates_Dec12_2022.Rdata")
+load( f)
+
+## long format data
+f = paste0(resultsdir, "obs_tsls_estimates_long_Dec12_2022.Rdata")
+load( file = f)
+
+```
+
+## load sensitivity data
+
+```{r}
+## sensitivity results
+w = which(par_data[,1] == "results_dir")
+resultsdir = par_data[w,2]
+f = paste0(resultsdir, "tables/Dec12_2022_wNEO_SENSITIVITY_estimates.txt")
+wNEO_sensitivity = read.table(f, header = TRUE, sep = "\t", as.is = TRUE)
+
+## long format of sensitivity 
+wNEO_sensitivity_long = obsmr_2_longformat(data = wNEO_sensitivity, 
+                               pop_id = "wNEO_sa", 
+                               alpha = 0.05/43, 
+                               sandwich_estimates = FALSE)
+```
+
+## add sensitivity data to list
+
+```{r}
+obs_tsls_est[["wNEO_sa"]] = wNEO_sensitivity
+
+obs_tsls_est_long[["wNEO_sa"]] = wNEO_sensitivity_long
+```
+
+
+## add annotation to the results data frames
+
+```{r}
+for(i in 1:length(obs_tsls_est) ){
+  obs_tsls_est[[i]] = cbind(obs_tsls_est[[i]], study_data$feature_anno[, c("dietary_state","raw.label","class","subclass", "derived_features")] )
+}
+```
+
+
+```{r}
+names(obs_tsls_est)
+```
+
+
+# MR Results
+
+## weighted NEO results
+
+```{r}
+cat(paste0("weighted NEO nominally significant count\n"))
+sum( obs_tsls_est$wNEO$MR_P < 0.05 )
+cat(paste0("weighted NEO BF significant count\n"))
+sum( obs_tsls_est$wNEO$MR_P < 0.05/43 )
+```
+
+## distribution of associations by dietary state
+
+```{r}
+cat(paste0("\nNominally Associated\n"))
+w = which( obs_tsls_est$wNEO$MR_P < 0.05 )
+cat(paste0("response count\n"))
+length( grep("_r", obs_tsls_est$wNEO$outcome[w]) )
+cat(paste0("postprandial count\n"))
+length( grep("_p", obs_tsls_est$wNEO$outcome[w]) )
+cat(paste0("fasting count\n"))
+length( grep("_f", obs_tsls_est$wNEO$outcome[w]) )
+
+cat(paste0("\nAssociated\n"))
+w = which( obs_tsls_est$wNEO$MR_P < 0.05/43 )
+cat(paste0("response count\n"))
+length( grep("_r", obs_tsls_est$wNEO$outcome[w]) )
+cat(paste0("postprandial count\n"))
+length( grep("_p", obs_tsls_est$wNEO$outcome[w]) )
+cat(paste0("fasting count\n"))
+length( grep("_f", obs_tsls_est$wNEO$outcome[w]) )
+```
+
+## weighted NEO MR results in females
+
+```{r}
+cat(paste0("weighted NEO nominally significant count\n"))
+sum( obs_tsls_est$wNEO_female$MR_P < 0.05 )
+cat(paste0("weighted NEO BF significant count\n"))
+sum( obs_tsls_est$wNEO_female$MR_P < 0.05/43 )
+```
+
+## weighted NEO MR results in males
+
+```{r}
+cat(paste0("weighted NEO nominally significant count\n"))
+sum( obs_tsls_est$wNEO_male$MR_P < 0.05 )
+cat(paste0("weighted NEO BF significant count\n"))
+sum( obs_tsls_est$wNEO_male$MR_P < 0.05/43 )
+```
+
+## What is the correlation between female and male effect estimates
+
+```{r}
+cor.test(obs_tsls_est$wNEO_female$MR_beta, obs_tsls_est$wNEO_male$MR_beta)$p.value
+```
+
+
+```{r}
+temp_plotdata = data.frame(female = obs_tsls_est$wNEO_female$MR_beta,
+                           male = obs_tsls_est$wNEO_male$MR_beta)
+temp_plotdata %>% ggplot(aes(x = female, y = male)) +
+  geom_point( fill = "dodgerblue", size = 5, shape = 21, alpha = 0.7) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed") +
+  geom_vline(xintercept  = 0) +
+  geom_hline(yintercept = 0) +
+  geom_smooth(method = lm, formula = y~x, color = "red") +
+  theme_bw()
+```
+
+## correlation among sexes is poor but are any estimates actually different from each other. 
+
+```{r}
+temp = data.frame( outcome = obs_tsls_est$wNEO_female$outcome,
+                   female = obs_tsls_est$wNEO_female$MR_beta,
+                   female_se = obs_tsls_est$wNEO_female$MR_se,
+                   female_P = obs_tsls_est$wNEO_female$MR_P,
+                   male = obs_tsls_est$wNEO_male$MR_beta,
+                   male_se = obs_tsls_est$wNEO_male$MR_se,
+                   male_P = obs_tsls_est$wNEO_male$MR_P )
+
+###
+PearsonR = cor.test(temp$female, temp$male)$estimate
+PearsonR = formatC(PearsonR, digits = 3)
+
+#### difference between point estimates
+z = t( sapply(1:nrow(temp), function(i){
+  ztest(beta1 = temp[i,2], se1 = temp[i,3] , beta2 = temp[i,5] , se2 = temp[i,6] )  
+}) )
+temp$ztest_P = z[,2]
+w = which( z[,2]< 0.05 )
+q = which( z[,2]< 0.05/nrow(z) )
+temp$sig_dif = "P>0.05"
+temp$sig_dif[w] = "P<0.05"
+temp$sig_dif[q] = "P<0.05/687"
+temp$sig_dif = factor(temp$sig_dif, levels = c("P>0.05", "P<0.05", "P<0.05/687" )[3:1] )
+
+table(temp$sig_dif)
+```
+
+
+
+## BF significant MR results in the sample population
+
+```{r}
+mytable = obs_tsls_est$wNEO %>% filter( MR_P < 0.05/43 ) %>% 
+    dplyr::select(outcome, raw.label, class, dietary_state,
+                  Obs_W, Obs_beta, Obs_se, Obs_P, 
+                  MR_Wstat, MR_beta, MR_se, MR_P) 
+
+colnames(mytable) = c("id", "raw.label", "class", "dietary_state", 
+                      "obs residual W", "obs beta","obs se","obs P", 
+                      "MR residual W", "MR beta","MR se","MR P")
+
+mytable %>% kable() %>% kable_classic_2()
+```
+
+```{r}
+f = paste0(resultsdir, "tables/MR_top_results_v3.txt")
+write.table(mytable, file = f, row.names = FALSE, col.names = TRUE, sep = "\t", quote = TRUE)
+```
+
+## BF significant MR results in the sample population ordered by dietary state and P
+
+```{r}
+mytable = obs_tsls_est$wNEO %>% filter( MR_P < 0.05/43 ) %>% 
+  arrange(dietary_state, MR_P) %>%
+    dplyr::select(outcome, raw.label, class, dietary_state,
+                  Obs_W, Obs_beta, Obs_se, Obs_P, 
+                  MR_Wstat, MR_beta, MR_se, MR_P) 
+
+colnames(mytable) = c("id", "raw.label", "class", "dietary_state", 
+                      "obs residual W", "obs beta","obs se","obs P", 
+                      "MR residual W", "MR beta","MR se","MR P")
+
+mytable %>% kable() %>% kable_classic_2()
+```
+
+
+
+```{r}
+mytable = obs_tsls_est$wNEO %>% filter( MR_P < 0.05/43, dietary_state == "response" ) %>% 
+  arrange( MR_P) %>%
+    dplyr::select(outcome, raw.label, class, dietary_state,
+                  Obs_W, Obs_beta, Obs_se, Obs_P, 
+                  MR_Wstat, MR_beta, MR_se, MR_P) 
+
+colnames(mytable) = c("id", "raw.label", "class", "dietary_state", 
+                      "obs residual W", "obs beta","obs se","obs P", 
+                      "MR residual W", "MR beta","MR se","MR P")
+
+mytable %>% kable() %>% kable_classic_2()
+```
+
+
+
+## BF significant MR results in females
+
+```{r}
+mytable = obs_tsls_est$wNEO_female %>% filter( MR_P < 0.05/43 ) %>% 
+    dplyr::select(outcome, raw.label, class, dietary_state,
+                  Obs_W, Obs_beta, Obs_se, Obs_P, 
+                  MR_Wstat, MR_beta, MR_se, MR_P) 
+
+colnames(mytable) = c("id", "raw.label", "class", "dietary_state", 
+                      "obs residual W", "obs beta","obs se","obs P", 
+                      "MR residual W", "MR beta","MR se","MR P")
+
+
+mytable %>% kable() %>% kable_classic_2()
+```
+
+## BF significant MR results in males
+
+```{r}
+mytable = obs_tsls_est$wNEO_male %>% filter( MR_P < 0.05/43 ) %>% 
+    dplyr::select(outcome, Obs_W, Obs_beta, Obs_se, Obs_P, 
+                MR_Wstat, MR_beta, MR_se, MR_P) 
+
+colnames(mytable) = c("id",
+                      "obs residual W", "obs beta","obs se","obs P", 
+                      "MR residual W", "MR beta","MR se","MR P")
+
+mytable %>% kable() %>% kable_classic_2()
+```
+
+
+```{r}
+shapiro.test(obs_tsls_est$wNEO_female$MR_beta)
+shapiro.test( abs(obs_tsls_est$wNEO_female$MR_beta) )
+
+shapiro.test(obs_tsls_est$wNEO_male$MR_beta)
+```
+
+
+
+```{r}
+quantile(obs_tsls_est$wNEO_female$MR_beta, probs = c(0.025, 0.5, 0.975))
+quantile(obs_tsls_est$wNEO_male$MR_beta, probs = c(0.025, 0.5, 0.975))
+```
+
+```{r}
+summary( obs_tsls_est$wNEO_female$MR_beta )
+summary( obs_tsls_est$wNEO_male$MR_beta )
+
+t.test(obs_tsls_est$wNEO_female$MR_beta, obs_tsls_est$wNEO_male$MR_beta, paired = TRUE)
+t.test( abs(obs_tsls_est$wNEO_female$MR_beta), abs(obs_tsls_est$wNEO_male$MR_beta), paired = TRUE)$p.value
+t.test( abs(obs_tsls_est$wNEO_female$MR_beta), abs(obs_tsls_est$wNEO_male$MR_beta), paired = FALSE)
+var.test(obs_tsls_est$wNEO_female$MR_beta, obs_tsls_est$wNEO_male$MR_beta)
+```
+
+
+```{r}
+w = which(obs_tsls_est$wNEO_male$derived_features == "yes")
+t.test( abs(obs_tsls_est$wNEO_female$MR_beta[w]), abs(obs_tsls_est$wNEO_male$MR_beta[w]), paired = FALSE)
+```
+
+
+
+```{r}
+hist(obs_tsls_est$wNEO_female$MR_beta)
+hist(obs_tsls_est$wNEO_male$MR_beta)
+```
+
+
+## non-transformed effect estimates
+
+```{r}
+# topR = c("ala_r","mvldlplpct_r","svldlfcpct_r")
+topR = unlist( obs_tsls_est$wNEO %>% filter( MR_P < 0.05/43 ) %>% dplyr::select(outcome) )
+###
+top_nontransformed_response = t( sapply(topR, function(trait){
+  out = obsmr( wdata = mydata,
+            outcome = trait,
+            exposure = "bmi",
+            instrument = "Yengo_Weighted_GRS",
+            covariates = c("visit_date","subpop","age","sex"),
+            weights = "pweight",
+            rnt_outcome = FALSE,
+            outlier_method = "iqr",
+            outlier_cutoff = 10,
+            messages = FALSE)
+  return(out)
+}) )
+##########################
+## turn into a data.frame
+##########################
+top_nontransformed_response = as.data.frame(top_nontransformed_response)
+##########################
+## convert to numeric
+##########################
+num_cols = c(4:6, 8:9, 12:24, 27:36, 39:48, 51:74 )
+for(i in num_cols){
+  top_nontransformed_response[,i] = as.numeric(top_nontransformed_response[,i])
+}
+```
+
+```{r}
+mytable = top_nontransformed_response %>% 
+  dplyr::select(outcome, Obs_W, Obs_beta, Obs_se, Obs_P, 
+                MR_Wstat, MR_beta, MR_se, MR_P) 
+
+colnames(mytable) = c("id",
+                      "obs residual W", "obs beta","obs se","obs P", 
+                      "MR residual W", "MR beta","MR se","MR P")
+
+
+mytable %>% kable() %>% kable_classic_2()
+```
+
+```{r}
+f = paste0(resultsdir, "tables/MR_top_results_v3_NO_transformation.txt")
+write.table(mytable, file = f, row.names = FALSE, col.names = TRUE, sep = "\t", quote = TRUE)
+```
+
+
+## directional consistencey with observational data?
+
+```{r}
+pcols = RColorBrewer::brewer.pal(8, "Set1")
+######3
+obs_tsls_est$wNEO %>% 
+  filter(MR_P < 0.05) %>% 
+  ggplot(aes(x = Obs_beta, y = MR_beta)) +
+  geom_point(aes(fill = dietary_state, size = -log10(MR_P) ), alpha = 0.8, shape = 21) +
+  scale_color_brewer(palette = "Set1") +
+  geom_vline(xintercept = 0, linetype = "dotted") +
+  geom_hline(yintercept = 0, linetype = "dotted") +
+  ggrepel::geom_text_repel( data = filter(obs_tsls_est$wNEO, MR_P < 0.05 & Obs_P > 0.05 & MR_beta > 0 ),
+                  aes(label=outcome),
+                  color = pcols[4],
+                  min.segment.length = 0,
+                  box.padding = 0.4,
+                  nudge_x = -0.025,
+                  nuudge_y = -0.01
+                   ) +
+  ggrepel::geom_text_repel( data = filter(obs_tsls_est$wNEO, MR_P < 0.05 & Obs_P > 0.05 & MR_beta < 0),
+                  aes(label=outcome),
+                  color = pcols[5],
+                  min.segment.length = 0,
+                  box.padding = 0.4,
+                  nudge_x = 0.025,
+                  nuudge_y = -0.02
+                   ) +
+  theme_bw()
+
+```
+
+## metabolites with oposite observational and MR directions
+
+```{r}
+obs_tsls_est$wNEO %>% 
+  filter(MR_P < 0.05 & Obs_beta < 0 & MR_beta > 0) %>% 
+  dplyr::select(outcome, raw.label, class, MR_beta, MR_P, Obs_beta, Obs_P) %>%
+  kable() %>%
+  kable_classic()
+
+```
+
+```{r}
+obs_tsls_est$wNEO %>% 
+  filter( grepl("mhdltgpct", outcome) ) %>% 
+  dplyr::select(outcome, raw.label, class, subclass, MR_beta, MR_se, MR_P) %>%
+  kable() %>%
+  kable_classic()
+
+```
+
+## Distribution of effect estimates differ in observational and MR results by dietary state
+
+```{r}
+obs_tsls_est$wNEO %>% group_by(dietary_state) %>% summarize( pval = t.test(abs(MR_beta), abs(Obs_beta), 
+                                                                           alternative = "two.sided", 
+                                                                           paired = TRUE)$p.val,
+                                                   meanx = t.test(abs(MR_beta), abs(Obs_beta))$est[1],
+                                                   meany = t.test(abs(MR_beta), abs(Obs_beta))$est[2],
+                                                   paired_meandif = t.test(abs(MR_beta), abs(Obs_beta),
+                                                                           paired = TRUE)$est[1],
+                                                   MR_W = shapiro.test(abs(MR_beta) )$stat,
+                                                   Obs_W  = shapiro.test(abs(Obs_beta) )$stat,
+                                                   Pearson_r = cor.test(Obs_beta,MR_beta)$estimate,
+                                                   Pearson_P = cor.test(Obs_beta,MR_beta)$p.val)
+```
+
+
+## fasting and postprandial MR overlaping metabolites
+
+```{r}
+n = obs_tsls_est$wNEO %>% filter(MR_P < 0.05/43 ) %>% pull(outcome)
+n = gsub("_f","",n); n = gsub("_p","",n); n = gsub("_r","",n)
+table(n)
+
+```
+
+## distribution of MR betas
+
+```{r}
+hist(obs_tsls_est$wNEO$MR_beta, main = "MR effect estiamtes distribution", xlab = "beta")
+```
+
+## volcano plot
+
+```{r, fig.width = 15, fig.height = 5}
+df = obs_tsls_est$wNEO[, c("outcome","MR_beta", "MR_se","MR_P") ]
+m = match(df$outcome, study_data$feature_anno$new_id)
+df = cbind(df, study_data$feature_anno[m, c("class","subclass", "dietary_state") ])
+df$dietary_state = factor(df$dietary_state, levels = c("response","postprandial","fasting")[3:1] )
+
+####
+p = df %>% ggplot( aes( x = MR_beta, y = -log10( MR_P ) ) ) +
+  geom_point( aes(fill = class ), shape = 21, size = 4  ) +
+  geom_hline( yintercept = -log10(0.05/43), linewidth = 1, color = "black" ) +
+  geom_hline( yintercept = -log10(0.05), linewidth = 1, color = "grey", linetype = "dotted" ) +
+  geom_text(aes(label = outcome ), nudge_x = -0.01,
+            color = "grey30", size = 3, 
+            check_overlap = TRUE) +
+  facet_wrap(~dietary_state) +
+  theme_bw()
+
+p
+```
+
+## save volcano to file 
+
+```{r}
+f = paste0(resultsdir, "figures/MR_volcano_v3.pdf")
+pdf(file = f, width = 14, height = 5)
+p
+dev.off()
+
+```
+
+
+
+### average response effect by metabolite class
+
+```{r}
+class_means = df %>% 
+  filter(dietary_state == "fasting") %>% 
+  group_by(class) %>% 
+  summarise( mean = mean( MR_beta ), 
+             min =  min( MR_beta ),
+             max =  max( MR_beta ),
+             n = length(abs(MR_beta))  ) %>% 
+  arrange( desc(abs(mean)) )
+class_means
+```
+
+
+### average response effect by metabolite class
+
+```{r}
+class_means = df %>% 
+  filter(dietary_state == "postprandial") %>% 
+  group_by(class) %>% 
+  summarise( mean = mean( MR_beta ), 
+             min =  min( MR_beta ),
+             max =  max( MR_beta ),
+             n = length(abs(MR_beta))  ) %>% 
+  arrange( desc(abs(mean)) )
+class_means
+```
+
+
+### average response effect by metabolite class
+
+```{r}
+class_means = df %>% 
+  filter(dietary_state == "response") %>% 
+  group_by(class) %>% 
+  summarise( mean = mean( MR_beta ), 
+             min =  min( MR_beta ),
+             max =  max( MR_beta ),
+             n = length(abs(MR_beta))  ) %>% 
+  arrange( desc(abs(mean)) )
+class_means
+```
+
+```{r}
+obs_tsls_est$wNEO %>% 
+  filter(class == "Amino acids" & dietary_state == "response") %>% 
+  arrange( desc(abs(MR_beta)) ) %>%
+  dplyr::select("outcome","MR_beta", "MR_se","MR_P") %>%
+  kable() %>% kableExtra::kable_classic_2()
+```
+
+
+## box plot of point estimates by class and dietary state
+
+```{r, fig.width = 15, fig.height = 7}
+# df$dietary_state = factor(df$dietary_state, levels = c("response","postprandial","fasting"))
+###
+p = df %>%  ggplot( aes(x=class, y = MR_beta) ) + 
+  geom_boxplot( aes(fill = class)) +
+  geom_jitter( width = 0.15 ) +
+  geom_hline(yintercept = 0) +
+  facet_wrap(~dietary_state, nrow = 3, scales = "free") +
+  theme_bw() +
+  theme(axis.ticks.x = element_blank(), axis.text.x = element_blank() ) 
+p
+```
+
+## save boxplot to file
+
+```{r}
+f = paste0(resultsdir, "figures/MR_beta_byclass_v3.pdf")
+pdf(file = f, width = 12, height = 5)
+p
+dev.off()
+```
+
+## FASTING MR
+
+```{r, fig.width = 10, fig.height = 8, error=FALSE, warning=FALSE}
+
+## Function to extract needed data
+wdata = lipoprotein_wdata(wd = obs_tsls_est$wNEO, define_Dstate = "fasting")
+
+## plot order of subclasses
+wdata$trait = factor(wdata$trait , levels = c("concentration", "total_lipids", 
+                                              "phospholipids", "free_cholesterol", 
+                                              "total_cholesterol", "cholesterol_esters", 
+                                              "triglycerides",
+                                              "phospholipids/total_lipids", "free_cholesterol/total_lipids", 
+                                              "total_cholesterol/total_lipids" , 
+                                              "cholesterol_esters/total_lipids", 
+                                              "triglycerides/total_lipids")[12:1] )
+
+###
+x = RColorBrewer::brewer.pal(8,"Set1")
+pcol = c( rep(x[3],6) , x[4] , rep(x[1], 3), rep(x[2],4) ) 
+###
+plotA = wdata %>% ggplot(aes(x = subclass, y = trait, fill = MR_beta)) +
+  geom_tile() + 
+  geom_text(data = subset(wdata, MR_P <= 0.05 & MR_P > 0.05/43), aes(label =  round(MR_beta, d = 4) ), size = 2.4 ) +
+  # geom_text(data = subset(wdata, MR_P <= 0.05/43), aes(label =  paste0(round(MR_beta, d = 4), "*" ) ), size = 2.4 ) +
+  scale_fill_gradient2(low = "red", mid = "white", high = "blue") +
+  theme(axis.text.x = element_text(angle = 35, vjust = 1, hjust=1, colour = pcol)) +
+  labs(x = "lipoprotein subclass", y = "lipoprotein content or trait") +
+  facet_grid(value ~ ., scales = "free_y", space = "free_y")
+
+plotB = wdata  %>% filter(!grepl("/",trait)) %>%   ggplot(aes(x = as.numeric(subclass), y = MR_beta, color = trait)) +
+  geom_hline(yintercept = 0, size = 1, linetype = "dashed", color = "grey30") +
+  geom_point(size = 4, alpha = 0.6) +
+  geom_line( aes(color = trait) ) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 40, vjust = 1, hjust=1, color = pcol)) + 
+  scale_x_continuous(name = "lipoprotein subclass", breaks = 1:14, labels = levels(wdata$subclass) )
+
+ggpubr::ggarrange(plotA, plotB, ncol = 1)  
+
+```
+
+
+## save fasting lipoproteins beta profile
+
+```{r}
+f = paste0(resultsdir, "figures/wNEO_fasting_lipo_MR_profile_v3.pdf")
+pdf(file = f, width = 10, height = 8)
+ggpubr::ggarrange(plotA, plotB, ncol = 1)  
+dev.off()
+```
+
+
+
+## POSTPRANDIAL LIPIOPROTEINS ASSOCIATION PATTERN
+
+```{r, fig.width = 10, fig.height = 8,  error=FALSE, warning=FALSE}
+wdata = lipoprotein_wdata(wd = obs_tsls_est$wNEO, define_Dstate = "postprandial")
+
+###
+x = RColorBrewer::brewer.pal(8,"Set1")
+pcol = c( rep(x[3],6) , x[4] , rep(x[1], 3), rep(x[2],4) ) 
+###
+plotA = wdata %>% ggplot(aes(x = subclass, y = trait, fill = MR_beta)) +
+  geom_tile() + 
+  geom_text(data = subset(wdata, MR_P <= 0.05 & MR_P > 0.05/43), aes(label =  round(MR_beta, d = 4) ), size = 2.4 ) +
+  geom_text(data = subset(wdata, MR_P <= 0.05/43), aes(label =  paste0(round(MR_beta, d = 4), " *" ) ), size = 2.4 ) +
+  scale_fill_gradient2(low = "red", mid = "white", high = "blue") +
+  theme(axis.text.x = element_text(angle = 35, vjust = 1, hjust=1, colour = pcol)) +
+  labs(x = "lipoprotein subclass", y = "lipoprotein content or trait") +
+  facet_grid(value ~ ., scales = "free_y", space = "free_y")
+
+plotB = wdata  %>% filter(!grepl("/",trait)) %>%   ggplot(aes(x = as.numeric(subclass), y = MR_beta, color = trait)) +
+  geom_hline(yintercept = 0, size = 1, linetype = "dashed", color = "grey30") +
+  geom_point(size = 4, alpha = 0.6) +
+  geom_line( aes(color = trait) ) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 40, vjust = 1, hjust=1, color = pcol)) + 
+  scale_x_continuous(name = "lipoprotein subclass", breaks = 1:14, labels = levels(wdata$subclass) )
+
+ggpubr::ggarrange(plotA, plotB, ncol = 1)
+  
+```
+
+## save poprandial lipoproteins beta profile
+
+```{r}
+f = paste0(resultsdir, "figures/wNEO_postprandial_lipo_MR_profile_v3.pdf")
+pdf(file = f, width = 10, height = 8)
+ggpubr::ggarrange(plotA, plotB, ncol = 1)  
+dev.off()
+```
+
+
+
+```{r}
+obs_tsls_est$wNEO %>% 
+  #filter(outcome %in% c("mhdltg_f", "shdltg_f", "mhdltg_p", "shdltg_p") ) %>%
+  filter( grepl("apob", outcome) ) %>% 
+  dplyr::select( Obs_beta, Obs_se, Obs_P, MR_beta, MR_se, MR_P) %>%
+  kable() %>%
+  kable_classic()
+
+```
+
+```{r}
+study_data$feature_anno %>% 
+  filter( grepl("vldl", metabolite) ) %>% 
+  dplyr::select(new_id, raw.label) %>% 
+  kable() %>%
+  kable_classic()
+```
+
+## are VLDL MR estimates larger in postprandial data?
+
+```{r}
+temp_vldl = obs_tsls_est$wNEO %>% 
+  filter( grepl("vldl", outcome) & !grepl("pct", outcome) )
+
+## fasting
+f = temp_vldl %>% filter( grepl("_f", outcome)  ) %>% dplyr::select(Obs_beta, MR_beta)
+p = temp_vldl %>% filter( grepl("_p", outcome)  ) %>% dplyr::select(Obs_beta, MR_beta)
+
+t.test(f$Obs_beta, p$Obs_beta, paired = TRUE)
+
+t.test(f$MR_beta, p$MR_beta, paired = TRUE)
+```
+
+## are lipoprotein MR estimates larger in postprandial data?
+
+```{r}
+temp_lipo = obs_tsls_est$wNEO %>% 
+  filter( grepl("hdl", outcome) | grepl("ldl", outcome) | grepl("idl", outcome)  )
+
+temp_lipo = temp_lipo %>% filter( !grepl("pct", outcome) )
+
+
+## fasting
+f = temp_lipo %>% filter( grepl("_f", outcome)  ) %>% dplyr::select(Obs_beta, MR_beta)
+p = temp_lipo %>% filter( grepl("_p", outcome)  ) %>% dplyr::select(Obs_beta, MR_beta)
+
+t.test(f$Obs_beta, p$Obs_beta, paired = TRUE)
+
+t.test(f$MR_beta, p$MR_beta, paired = TRUE)
+```
+
+
+
+## RESPONSE LIPIOPROTEINS ASSOCIATION PATTERN
+
+```{r, fig.width = 10, fig.height = 8,  error=FALSE, warning=FALSE}
+wdata = lipoprotein_wdata(wd = obs_tsls_est$wNEO, define_Dstate = "response")
+
+###
+x = RColorBrewer::brewer.pal(8,"Set1")
+pcol = c( rep(x[3],6) , x[4] , rep(x[1], 3), rep(x[2],4) ) 
+###
+plotA = wdata %>% ggplot(aes(x = subclass, y = trait, fill = MR_beta)) +
+  geom_tile() + 
+  geom_text(data = subset(wdata, MR_P <= 0.05 & MR_P > 0.05/43), aes(label =  round(MR_beta, d = 4) ), size = 2.4 ) +
+  geom_text(data = subset(wdata, MR_P <= 0.05/43), aes(label =  paste0(round(MR_beta, d = 4), " *" ) ), size = 2.4 ) +
+  scale_fill_gradient2(low = "red", mid = "white", high = "blue") +
+  theme(axis.text.x = element_text(angle = 35, vjust = 1, hjust=1, colour = pcol)) +
+  labs(x = "lipoprotein subclass", y = "lipoprotein content or trait") +
+  facet_grid(value ~ ., scales = "free_y", space = "free_y")
+
+plotB = wdata  %>% filter(!grepl("/",trait)) %>%   ggplot(aes(x = as.numeric(subclass), y = MR_beta, color = trait)) +
+  geom_hline(yintercept = 0, size = 1, linetype = "dashed", color = "grey30") +
+  geom_point(size = 4, alpha = 0.6) +
+  geom_line( aes(color = trait) ) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 40, vjust = 1, hjust=1, color = pcol)) + 
+  scale_x_continuous(name = "lipoprotein subclass", breaks = 1:14, labels = levels(wdata$subclass) )
+
+ggpubr::ggarrange(plotA, plotB, ncol = 1)
+  
+```
+
+
+
+## save response lipoproteins beta profile
+
+```{r}
+f = paste0(resultsdir, "figures/wNEO_response_lipo_MR_profile_v3.pdf")
+pdf(file = f, width = 10, height = 8)
+ggpubr::ggarrange(plotA, plotB, ncol = 1)  
+dev.off()
+```
+
+ 
+
+```{r , fig.width = 9, fig.height = 11}
+k = c( "Lipoprotein particle size",
+       "Glycerides and phospholipids",
+       "Cholesterol" , "Apolipoproteins",
+       "Fatty acids",
+       "Fatty acids ratios",
+       "Amino acids", 
+      "Glycolysis related metabolites", "Ketone bodies", "Inflammation")
+
+wdata = obs_tsls_est$wNEO %>% filter( class %in% k  ) %>%
+  dplyr::select( outcome, dietary_state, class, raw.label, MR_beta, MR_P)
+## edit outcome names
+wdata$outcome = gsub("_f","",wdata$outcome);wdata$outcome = gsub("_p","",wdata$outcome);wdata$outcome = gsub("_r","",wdata$outcome)
+## edit plot order with factor level
+o = order( wdata %>% filter(dietary_state == "fasting") %>% dplyr::select(MR_beta) )
+wdata$outcome = factor(wdata$outcome, levels = unique(wdata$outcome)[o] )
+## Dietary State plot order
+wdata$dietary_state = factor(wdata$dietary_state, levels = unique(wdata$dietary_state) )
+## Class plot order
+wdata$class = factor(wdata$class, levels = unique(wdata$class) )
+
+
+#########3
+plotA = wdata %>% ggplot(aes(y = outcome, x = dietary_state, fill = MR_beta)) +
+  geom_tile() + 
+  geom_text(data = subset(wdata, MR_P < 0.05  & MR_P > 0.05/43), aes(label =  round(MR_beta,d = 4)  ), size = 2.75 ) +
+  geom_text(data = subset(wdata, MR_P < 0.05/43), aes(label =  paste0( round(MR_beta,d = 4), " *"  ) ), size = 2.75 ) +
+  scale_fill_gradient2(low = "red", mid = "white", high = "blue") +
+  theme(axis.text.x = element_text(angle = 35, vjust = 1, hjust=1)) +
+  labs(x = "dietary state", y = "outcome") +
+  facet_grid(class ~ ., scales = "free_y", space = "free_y") +
+  theme(strip.text.y = element_text(angle = 0))
+
+plotA
+
+```
+
+
+## save beta profiles
+
+```{r}
+f = paste0(resultsdir, "figures/wNEO_MR_Beta_profiles_v3.pdf")
+pdf(file = f, width = 9, height = 11)
+plotA
+dev.off()
+```
+
+
+
+```{r , fig.width = 9, fig.height = 14}
+k = c( "Lipoprotein subclasses")
+
+wdata = obs_tsls_est$wNEO %>% filter( class %in% k  ) %>%
+  dplyr::select( outcome, dietary_state, class, subclass, raw.label, MR_beta, MR_P)
+## edit outcome names
+wdata$outcome = gsub("_f","",wdata$outcome);wdata$outcome = gsub("_p","",wdata$outcome);wdata$outcome = gsub("_r","",wdata$outcome)
+## edit plot order with factor level
+o = order( wdata %>% filter(dietary_state == "fasting") %>% dplyr::select(MR_beta) )
+wdata$outcome = factor(wdata$outcome, levels = unique(wdata$outcome)[o] )
+## Dietary State plot order
+wdata$dietary_state = factor(wdata$dietary_state, levels = unique(wdata$dietary_state) )
+## Class plot order
+wdata$subclass = factor(wdata$subclass, levels = unique(wdata$subclass) )
+
+
+#########3
+plotA = wdata %>% ggplot(aes(y = outcome, x = dietary_state, fill = MR_beta)) +
+  geom_tile() + 
+  geom_text(data = subset(wdata, MR_P < 0.05  & MR_P > 0.05/43), aes(label =  round(MR_beta, d = 4)  ), size = 2.75 ) +
+  geom_text(data = subset(wdata, MR_P < 0.05/43), aes(label =  paste0( round(MR_beta,d = 4), " *"  ) ), size = 2.75 ) +
+  scale_fill_gradient2(low = "red", mid = "white", high = "blue") +
+  theme(axis.text.x = element_text(angle = 35, vjust = 1, hjust=1)) +
+  labs(x = "dietary state", y = "outcome") +
+  facet_grid(subclass ~ ., scales = "free_y", space = "free_y") +
+  theme(strip.text.y = element_text(angle = 0))
+
+plotA
+
+```
+
+
+## save beta profiles
+
+```{r}
+f = paste0(resultsdir, "figures/wNEO_MR_Beta_Lipoprotien_profiles_v3.pdf")
+pdf(file = f, width = 9, height = 11)
+plotA
+dev.off()
+```
+
+
+
+```{r , fig.width = 9, fig.height = 14}
+k = c( "Lipoprotein subclasses ratios")
+
+wdata = obs_tsls_est$wNEO %>% filter( class %in% k  ) %>%
+  dplyr::select( outcome, dietary_state, class, subclass, raw.label, MR_beta, MR_P)
+## edit outcome names
+wdata$outcome = gsub("_f","",wdata$outcome);wdata$outcome = gsub("_p","",wdata$outcome);wdata$outcome = gsub("_r","",wdata$outcome)
+## edit plot order with factor level
+o = order( wdata %>% filter(dietary_state == "fasting") %>% dplyr::select(MR_beta) )
+wdata$outcome = factor(wdata$outcome, levels = unique(wdata$outcome)[o] )
+## Dietary State plot order
+wdata$dietary_state = factor(wdata$dietary_state, levels = unique(wdata$dietary_state) )
+## Class plot order
+wdata$subclass = factor(wdata$subclass, levels = unique(wdata$subclass) )
+
+
+#########3
+plotA = wdata %>% ggplot(aes(y = outcome, x = dietary_state, fill = MR_beta)) +
+  geom_tile() + 
+  geom_text(data = subset(wdata, MR_P < 0.05  & MR_P > 0.05/43), aes(label =  round(MR_beta, d = 4)  ), size = 2.75 ) +
+  geom_text(data = subset(wdata, MR_P < 0.05/43), aes(label =  paste0( round(MR_beta,d = 4), " *"  ) ), size = 2.75 ) +
+  scale_fill_gradient2(low = "red", mid = "white", high = "blue") +
+  theme(axis.text.x = element_text(angle = 35, vjust = 1, hjust=1)) +
+  labs(x = "dietary state", y = "outcome") +
+  facet_grid(subclass ~ ., scales = "free_y", space = "free_y") +
+  theme(strip.text.y = element_text(angle = 0))
+
+plotA
+
+```
+
+
+## save beta profiles
+
+```{r}
+f = paste0(resultsdir, "figures/wNEO_MR_Beta_Lipoprotien_Ratios_profiles_v3.pdf")
+pdf(file = f, width = 9, height = 12)
+plotA
+dev.off()
+```
+
+
+
+
+## Response MR effect estimates ranked 
+
+```{r}
+df %>% filter(dietary_state == "response" & MR_P < 0.05) %>% arrange(  abs( MR_P ) ) %>%
+  kable() %>% kableExtra::kable_classic()
+```
+
+## A response example : Alanine
+
+```{r, fig.width = 10, fig.height = 4}
+plot_data = na.omit( mydata[, c("sex", "age", "ala_f","ala_p","ala_r","bmi", "Yengo_Weighted_GRS")] )
+plot_data = as.data.frame(plot_data)
+## estimate d.hat
+d = lm(bmi ~ Yengo_Weighted_GRS, data = plot_data)
+plot_data$d.hat = fitted.values(d)
+## Genotype Predicted BMI Cats
+q = quantile(plot_data$d.hat, probs = c(0.25, 0.75))
+plot_data$Geno_BMI_class = "lower_25"
+w = which( plot_data$d.hat > q[1] & plot_data$d.hat < q[2] )
+plot_data$Geno_BMI_class[w] = "mid_50"
+w = which( plot_data$d.hat >= q[2]  )
+plot_data$Geno_BMI_class[w] = "top_25"
+ 
+plot_data$Geno_BMI_class = factor(plot_data$Geno_BMI_class, 
+                             levels = c("lower_25","mid_50","top_25") )
+
+  
+## BMI Categories
+plot_data$bmi_class = "healthy weight"
+w = which( plot_data$bmi > 25  )
+plot_data$bmi_class[w] = "overweight"
+w = which( plot_data$bmi > 30 )
+plot_data$bmi_class[w] = "obese"
+w = which( plot_data$bmi > 40 )
+plot_data$bmi_class[w] = "severely obese"
+
+plot_data$bmi_class = factor(plot_data$bmi_class, 
+                             levels = c("healthy weight","overweight","obese", "severely obese") )
+################3
+pcol = RColorBrewer::brewer.pal(8, "Set1")
+
+#################
+p1 = plot_data %>% ggplot(aes(x = ala_f, y = ala_p)) +
+  geom_point( color = "grey80" , alpha = .50, size = 3) +
+  geom_smooth( method = lm, formula = y~x-1, aes(color = bmi_class)  ) +
+  scale_color_brewer(palette="Set1") +
+  theme_bw() +
+  theme(legend.position="top") +
+  labs(color = "BMI category", x = "fasting alanine", y = "postprandial alanine")
+  
+###############
+library(mgcv)
+p2 = plot_data %>% ggplot(aes(x = d.hat, y = rntransform(ala_r) ) ) +
+  geom_point( color = "grey80" , alpha = .50, size = 3) +
+  geom_smooth( method = lm, formula = y~x, color = "blue", fill = "blue") +
+  geom_smooth( method = gam, formula = y~s(x), 
+               color = "black", fill = "black",
+               size = 3, se = FALSE ) +
+  geom_smooth( method = lm, formula = y~x, aes(color = Geno_BMI_class)  ) +
+  scale_color_brewer(palette="Set1") +
+  labs(color = "geno. pred. BMI\ncategory", x = "genotype predicted BMI", y = "alanine response") +
+  theme_bw() +
+  theme(legend.position="top") 
+
+p = ggarrange(p1, p2, nrow = 1, common.legend = FALSE)
+p
+
+
+```
+
+
+
+# Comparing observational and MR Results
+
+## Overall Scatter Plot
+
+```{r, fig.width = 8, fig.height = 6}
+#### define the plot data
+temp = obs_tsls_est$wNEO
+temp$dietary_state = factor(temp$dietary_state, levels = unique(temp$dietary_state) )
+## correlation
+PearsonR = cor.test(temp$Obs_beta, temp$MR_beta)$estimate
+PearsonR = formatC(PearsonR, digits = 3)
+
+#### difference between point estimates
+z = t( sapply(1:nrow(temp), function(i){
+  ztest(beta1 = temp[i,"Obs_beta"], se1 = temp[i,"Obs_se"] , 
+        beta2 = temp[i,"MR_beta"] , se2 = temp[i,"MR_se"] )  
+}) )
+temp$ztest_P = z[,2]
+w = which( z[,2]< 0.05 )
+q = which( z[,2]< 0.05/nrow(z) )
+temp$sig_dif = "P>0.05"
+temp$sig_dif[w] = "P<0.05"
+temp$sig_dif[q] = "P<0.05/603"
+
+### sort the sig_dif plot order
+temp$sig_dif = factor(temp$sig_dif, levels = c("P>0.05","P<0.05","P<0.05/603"))
+## Define colors
+pcol = RColorBrewer::brewer.pal(3, "Set1")[3:1]
+  
+###
+p = temp %>% ggplot(aes(x = Obs_beta, y = MR_beta)) +
+  geom_abline(intercept = 0, slope = 1, color = "grey45", linetype = "dashed", size = 1.25) +
+  geom_vline(xintercept = 0, color = "grey45", linetype = "dotted", size = 1.25) +
+  geom_hline(yintercept = 0, color = "grey45", linetype = "dotted", size = 1.25) +
+  geom_smooth( method = "lm", formula = y ~ x , color = "black", size = 1.5) +
+  geom_point( aes(shape = as.factor(sig_dif), color = dietary_state ), 
+              alpha = 0.8, size = 3) +
+  ggrepel::geom_text_repel( data = filter(temp, sig_dif != "P>0.05" & Obs_beta > MR_beta), 
+                  aes(label=outcome, color = dietary_state), 
+                  min.segment.length = 0,
+                  box.padding = 0.4,
+                  nudge_x = 0.015,
+                  nudge_y = -0.01
+                   ) +
+  ggrepel::geom_text_repel( data = filter(temp, sig_dif != "P>0.05" & Obs_beta < MR_beta), 
+                  aes(label=outcome, color = dietary_state), 
+                  min.segment.length = 0,
+                  box.padding = 0.4,
+                  nudge_x = -0.005,
+                  nudge_y = 0.01
+                   ) +
+  # scale_color_brewer(palette="Set1") +
+  scale_color_manual(values = pcol) +
+  scale_shape_manual(values = c(1, 19)) +
+  labs(shape = paste0("estimates\ndifferent between\nobs and MR"), 
+       x = "observational estimates", y = "MR estimates",
+       color = "dietary state",
+       subtitle = paste0( "Pearson's r = ", PearsonR ) ) +
+  theme_bw() 
+
+p 
+
+```
+
+```{r}
+table(temp$sig_dif)
+```
+
+
+```{r}
+PearsonR = cor.test(temp$Obs_beta, temp$MR_beta)
+cat(paste0("Pearson's r = \t"))
+PearsonR$estimate
+cat(paste0("Pearson's p = \t"))
+PearsonR$p.value
+```
+
+```{r}
+fit = lm(MR_beta ~ Obs_beta, data = temp)
+summary(fit)
+```
+
+
+## what traits have an absolute observational and MR estimate > 0.03
+
+```{r}
+temp %>% filter(dietary_state == "response" & abs(Obs_beta)  > 0.03  & abs(MR_beta) > 0.03)
+```
+
+
+## Obs and MR correlation scatter plot by dietary state
+
+```{r, fig.width = 15, fig.height = 6}
+## Correlation estimates
+ds = levels(temp$dietary_state)
+PR = sapply(ds, function(s){
+  w = which(temp$dietary_state == s)
+  out = cor.test(temp$Obs_beta[w], temp$MR_beta[w])$estimate
+  out = formatC(out, digits = 3)
+  return(out)
+})
+PR = data.frame(dietary_state = ds, PearsonR = paste0("Pearson's r = ", PR), Obs_beta = 0.035, MR_beta = -0.12)
+PR$dietary_state = factor(PR$dietary_state, levels = ds)
+
+### PLOT
+p = temp %>% ggplot(aes(x = Obs_beta, y = MR_beta)) +
+  geom_smooth( method = "lm", formula = y ~ x , color = "black", size = 1.5) +
+  geom_abline(intercept = 0, slope = 1, color = "grey45") +
+  geom_vline(xintercept = 0, color = "grey70", linetype = "dashed") +
+  geom_hline(yintercept = 0, color = "grey70", linetype = "dashed") +
+  geom_point( aes(shape = as.factor(sig_dif), color = dietary_state ), 
+              alpha = 0.8, size = 3) +
+  ggrepel::geom_text_repel( data = filter(temp, sig_dif != "P>0.05" ), 
+                  aes(label=outcome), 
+                  min.segment.length = 0.2,
+                  box.padding = 0.7
+                   ) +
+  ggrepel::geom_text_repel( data = temp %>% filter(dietary_state == "response" & Obs_beta > 0.015  & MR_beta > 0.02), 
+                  aes(label=outcome, color = dietary_state), 
+                  min.segment.length = 0.2,
+                  box.padding = 0.5, nudge_x = 0.01, nudge_y = 0.02
+                   ) +
+  ggrepel::geom_text_repel( data = temp %>% filter(dietary_state == "response" & Obs_beta < -0.03  & MR_beta < -0.03),
+                  aes(label=outcome, color = dietary_state),
+                  min.segment.length = 0.3,
+                  box.padding = 0.5
+                   ) +
+  # scale_color_brewer(palette="Set1") +
+  scale_color_manual(values = pcol) +
+  scale_shape_manual(values = c(1, 19)) +
+  labs(shape = paste0("estimates diff."), 
+       x = "observational estimates", y = "MR estimates",
+       color = "dietary state" ) +
+  theme_bw() +
+  facet_wrap( ~ dietary_state ) +
+  geom_text(data = PR, aes(label = PearsonR), size = 4 )
+  # expand_limits(x=c(-0.1,0.1), y=c(-0.1,0.1)) 
+
+p 
+
+```
+
+
+## save correlation scatter plot to file
+
+```{r}
+f = paste0(resultsdir, "figures/wNEO_obs_mr_cor_V3.pdf")
+pdf(file = f, width = 15, height = 6)
+p
+dev.off()
+```
+
+# Obs and MR correlations by Dietary State
+
+```{r}
+PR = t( sapply(ds, function(s){
+  w = which(temp$dietary_state == s)
+  ## Pearson's r
+  a = cor.test(temp$Obs_beta[w], temp$MR_beta[w])
+  ## linear model
+  fit = lm(temp$MR_beta[w] ~ temp$Obs_beta[w])
+  o = summary(fit)
+  out = c(s, a$estimate, a$p.value, o$coefficients[1,1], o$coefficients[2,1])
+  names(out) = c("dietary_state","r","p","intercept","slope")
+  return(out)
+}) )
+PR = as.data.frame(PR)
+PR %>% kable %>% kableExtra::kable_classic_2()
+```
+
+
+## Exploring the unusual pattern in the response data
+
+```{r}
+temp2 = temp %>% filter(dietary_state == "response" ) %>% dplyr::select(outcome, Obs_beta, MR_beta, )
+temp2 = temp2 %>% mutate( dots = ifelse(Obs_beta < 0 & Obs_beta > -0.01 & MR_beta < -0.0225, "yes", "no" ) )
+# table(temp2$dots)
+
+### PLOT RESPONSE ONLY
+temp2 %>% 
+  ggplot(aes(x = Obs_beta, y = MR_beta)) +
+  geom_smooth( method = "lm", formula = y ~ x , color = "red", size = 1.5) +
+  geom_abline(intercept = 0, slope = 1, color = "grey45") +
+  geom_vline(xintercept = 0, color = "grey65", linetype = "dashed") +
+  geom_hline(yintercept = 0, color = "grey65", linetype = "dashed") +
+  geom_point( aes(shape = as.factor(dots) ), 
+              alpha = 0.8, size = 3) +
+  ggrepel::geom_text_repel( data = temp2 %>% filter(dots == "yes"), 
+                  aes(label=outcome), 
+                  min.segment.length = 0.05,
+                  box.padding = 0.25, nudge_y = -0.015, nudge_x = 0.015
+                   ) +
+  scale_color_brewer(palette="Set1") +
+  scale_shape_manual(values = c(1, 19)) +
+  labs(shape = paste0("what are these?"), 
+       x = "observational estimates", y = "MR estimates" ) +
+  theme_bw() 
+
+
+```
+
+
+## RESPONSE Similarities - do not scale the data
+
+```{r}
+temp2$similarity = similar_estimates(x = temp2$Obs_beta, y = temp2$MR_beta, scaledata = FALSE, sd_delta = 1.5)
+
+temp2 %>% 
+  ggplot(aes(x = Obs_beta, y = MR_beta)) +
+  geom_smooth( method = "lm", formula = y ~ x , color = "red", size = 1.5) +
+  geom_abline(intercept = 0, slope = 1, color = "grey45") +
+  geom_vline(xintercept = 0, color = "grey65", linetype = "dashed") +
+  geom_hline(yintercept = 0, color = "grey65", linetype = "dashed") +
+  geom_point( aes( shape = similarity, color = similarity ), 
+              alpha = 0.8, size = 3) +
+  scale_color_brewer(palette="Set1") +
+  labs( x = "observational estimates", y = "MR estimates" ) +
+  theme_bw() +
+  expand_limits(x=c(-0.07,0.07), y=c(-0.07,0.07)) +
+  ggrepel::geom_text_repel( data = temp2 %>% filter(similarity == "extreme"), 
+                  aes(label=outcome), 
+                  min.segment.length = 0.05,
+                  box.padding = 0.25,  nudge_y = 0.015 ) + 
+  ggrepel::geom_text_repel( data = temp2 %>% filter(similarity == "different" & MR_beta < -0.04 & Obs_beta < -0.02), 
+                  aes(label=outcome), 
+                  min.segment.length = 0.05,
+                  box.padding = 0.25,  nudge_x = 0.01 , nudge_y = -0.01) 
+
+```
+
+## RESPONSE Similarities -  scale the data
+
+```{r}
+temp2$similarity = similar_estimates(x = temp2$Obs_beta, y = temp2$MR_beta, scaledata = TRUE, sd_delta = 1.5)
+
+temp2 %>% 
+  ggplot(aes(x = Obs_beta, y = MR_beta)) +
+  geom_smooth( method = "lm", formula = y ~ x , color = "red", size = 1.5) +
+  geom_abline(intercept = 0, slope = 1, color = "grey45") +
+  geom_vline(xintercept = 0, color = "grey65", linetype = "dashed") +
+  geom_hline(yintercept = 0, color = "grey65", linetype = "dashed") +
+  geom_point( aes( shape = similarity, color = similarity ), 
+              alpha = 0.8, size = 3) +
+  scale_color_brewer(palette="Set1") +
+  labs( x = "observational estimates", y = "MR estimates" ) +
+  theme_bw() +
+  expand_limits(x=c(-0.07,0.07), y=c(-0.07,0.07)) +
+  ggrepel::geom_text_repel( data = temp2 %>% filter(similarity == "extreme"), 
+                  aes(label=outcome), 
+                  min.segment.length = 0.05,
+                  box.padding = 0.25,  nudge_x = 0.005, nudge_y = 0.01 )
+
+```
+
+## Paried t-test of response estimates
+
+```{r}
+t.test( temp2$Obs_beta, temp2$MR_beta, paired = TRUE )
+```
+
+
+## Average Obs and MR estimates by dietary state
+
+```{r}
+temp %>% group_by(dietary_state) %>% summarize(mean_obs = mean( abs(Obs_beta) ) , mean_MR = mean( abs(MR_beta) )  )
+```
+
+## Paired t.test for each dietary state
+
+```{r}
+temp %>% group_by(dietary_state) %>% summarize( Ttest_P = t.test(Obs_beta, MR_beta, paired = TRUE)$p.value,
+                                                 Ttest_est = t.test(Obs_beta, MR_beta, paired = TRUE)$est)
+```
+
+
+
+## wNEO Observational to MR correlations
+
+```{r}
+cat(paste0("correlation overall\n"))
+PearsonR = cor.test(obs_tsls_est$wNEO$Obs_beta, obs_tsls_est$wNEO$MR_beta)$estimate
+( PearsonR = formatC(PearsonR, digits = 3) )
+fit = lm(obs_tsls_est$wNEO$MR_beta ~ obs_tsls_est$wNEO$Obs_beta )
+s = summary(fit)$coefficients
+c(s[1,1], s[2,])
+
+cat(paste0("\ncorrelation response\n"))
+r = grep("_r", temp$outcome)
+Pr_r = cor.test(obs_tsls_est$wNEO$Obs_beta[r], obs_tsls_est$wNEO$MR_beta[r])$estimate
+( Pr_r = formatC(Pr_r, digits = 3) )
+fit = lm(obs_tsls_est$wNEO$MR_beta[r] ~ obs_tsls_est$wNEO$Obs_beta[r] )
+s = summary(fit)$coefficients
+c(s[1,1], s[2,])
+
+
+cat(paste0("\ncorrelation postprandial\n"))
+p = grep("_p", temp$outcome)
+Pr_p = cor.test(obs_tsls_est$wNEO$Obs_beta[p], obs_tsls_est$wNEO$MR_beta[p])$estimate
+( Pr_p = formatC(Pr_p, digits = 3) )
+fit = lm(obs_tsls_est$wNEO$MR_beta[p] ~ obs_tsls_est$wNEO$Obs_beta[p] )
+s = summary(fit)$coefficients
+c(s[1,1], s[2,])
+
+
+cat(paste0("\ncorrelation fasting\n"))
+f = grep("_f", temp$outcome)
+Pr_f = cor.test(obs_tsls_est$wNEO$Obs_beta[f], obs_tsls_est$wNEO$MR_beta[f])$estimate
+( Pr_f = formatC(Pr_f, digits = 3) )
+fit = lm(obs_tsls_est$wNEO$MR_beta[f] ~ obs_tsls_est$wNEO$Obs_beta[f] )
+s = summary(fit)$coefficients
+c(s[1,1], s[2,])
+
+
+
+```
+
+
+
+
+## Correlation between fasting and postprandial MR estimates
+
+```{r}
+library(ggrepel)
+###
+f = grep( "_f", obs_tsls_est$wNEO$outcome )
+p = grep( "_p", obs_tsls_est$wNEO$outcome )
+####
+temp = data.frame( outcome = obs_tsls_est$wNEO$outcome[f],
+                   fasting = obs_tsls_est$wNEO$MR_beta[f],
+                   fasting_se = obs_tsls_est$wNEO$MR_se[f],
+                   fasting_P = obs_tsls_est$wNEO$MR_P[f],
+                   postprandial = obs_tsls_est$wNEO$MR_beta[p],
+                   postprandial_se = obs_tsls_est$wNEO$MR_se[p],
+                   postprandial_P = obs_tsls_est$wNEO$MR_P[p] )
+temp$outcome = gsub("_f","",temp$outcome )
+###
+PearsonR = cor.test(temp$fasting, temp$postprandial)$estimate
+PearsonR = formatC(PearsonR, digits = 3)
+
+#### difference between point estimates
+z = t( sapply(1:nrow(temp), function(i){
+  ztest(beta1 = temp[i,2], se1 = temp[i,3] , beta2 = temp[i,5] , se2 = temp[i,6] )  
+}) )
+temp$ztest_P = z[,2]
+w = which( z[,2]< 0.05 )
+q = which( z[,2]< 0.05/nrow(z) )
+temp$sig_dif = "P>0.05"
+temp$sig_dif[w] = "P<0.05"
+temp$sig_dif[q] = "P<0.05/229"
+temp$sig_dif = factor(temp$sig_dif, levels = c("P>0.05", "P<0.05", "P<0.05/229" )[3:1] )
+###
+pcol = RColorBrewer::brewer.pal(3, "Set1")
+###
+p = temp %>% ggplot(aes(x = fasting, y = postprandial)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_smooth( method = "lm", formula = y ~ x , color = "black", size = 3) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +
+  ###
+  geom_point( aes(color = as.factor(sig_dif)),
+              size = 3, alpha = 0.5) +
+  ggrepel::geom_text_repel( data = temp %>% filter(sig_dif != "P>0.05") , 
+                  aes(label=outcome), 
+                  min.segment.length = 0.02,
+                  box.padding = 0.2, nudge_y = -0.005, color = pcol[1] ) +
+  ggrepel::geom_text_repel( data = temp %>% filter( fasting > 0.065 &  postprandial > 0.065 & fasting>postprandial) , 
+                  aes(label=outcome), 
+                  min.segment.length = 0.01,
+                  box.padding = 0.3, 
+                  nudge_y = -0.03, nudge_x = 0.015 ) +
+  ggrepel::geom_text_repel( data = temp %>% filter( fasting > 0.065 &  postprandial > 0.065 & fasting<postprandial) , 
+                  aes(label=outcome), 
+                  min.segment.length = 0.01,
+                  box.padding = 0.3, 
+                  nudge_y = 0.025, nudge_x = -0.01 ) +
+  ggrepel::geom_text_repel( data = temp %>% filter( fasting < -0.065 &  postprandial < -0.065 & fasting>postprandial) , 
+                  aes(label=outcome), 
+                  min.segment.length = 0.01,
+                  box.padding = 0.3,
+                  nudge_y = -0.015, nudge_x = 0.015 ) +
+  ggrepel::geom_text_repel( data = temp %>% filter( fasting < -0.065 &  postprandial < -0.065 & fasting<postprandial) , 
+                  aes(label=outcome), 
+                  min.segment.length = 0.01,
+                  box.padding = 0.3,
+                  nudge_y = 0.02, nudge_x = -0.01 ) +
+  scale_shape_manual(values = c(1, 19)) +
+  scale_color_brewer(palette="Set1") +
+  labs(color = paste0("estimates dif."),
+       subtitle = paste0( "Pearson's r = ", PearsonR ) ) +
+  theme_bw() +
+  expand_limits(x=c(-0.125,0.125), y=c(-0.125,0.125)) 
+
+p 
+```
+
+## save fasting postprandial scatter plot to file
+
+```{r}
+f = paste0(resultsdir, "figures/MR_fasting_postprandial_cor_v3.pdf")
+pdf(file = f, width = 6, height = 4)
+p
+dev.off()
+```
+
+
+## count how many point estimates differ between dietary states
+
+```{r}
+table(temp$sig_dif)
+```
+
+## which metabolites are different? and order them
+
+```{r}
+q = temp %>% filter(sig_dif == "P<0.05") %>% arrange(ztest_P)
+n = q$outcome
+###
+m = match(n, study_data$feature_anno$metabolite)
+
+study_data$feature_anno[m, c("metabolite", "label","class","subclass")] %>% kbl() %>%
+  kable_classic(full_width = F, html_font = "Cambria")
+```
+
+
+```{r}
+zt = function(beta1, se1, beta2, se2){
+  SE = as.numeric( sqrt( se1^2 + se2^2  ) )
+  z = as.numeric( (beta2-beta1) / SE )
+  P = 2 * (1 - pnorm(abs(z)))
+  out = c(z,P)
+  return(out)
+}
+
+
+i = 226
+zt(beta1 = temp[i,2], se1 = temp[i,3] , beta2 = temp[i,5] , se2 = temp[i,6] ) 
+ztest(beta1 = temp[i,2], se1 = temp[i,3] , beta2 = temp[i,5] , se2 = temp[i,6] ) 
+```
+
+
+## Correlation between fasting and postprandial MR estimates
+
+```{r}
+library(ggrepel)
+###
+# f = grep( "_f", obs_tsls_est$wNEO$outcome )
+f = which( obs_tsls_est$wNEO$dietary_state == "fasting" )
+# p = grep( "_p", obs_tsls_est$wNEO$outcome )
+p = which( obs_tsls_est$wNEO$dietary_state == "postprandial" )
+r = which( obs_tsls_est$wNEO$dietary_state == "response" )
+
+####
+temp = data.frame( outcome = obs_tsls_est$wNEO$outcome[f],
+                   fasting = obs_tsls_est$wNEO$MR_beta[f],
+                   fasting_se = obs_tsls_est$wNEO$MR_se[f],
+                   fasting_P = obs_tsls_est$wNEO$MR_P[f],
+                   postprandial = obs_tsls_est$wNEO$MR_beta[p],
+                   postprandial_se = obs_tsls_est$wNEO$MR_se[p],
+                   postprandial_P = obs_tsls_est$wNEO$MR_P[p],
+                   response = obs_tsls_est$wNEO$MR_beta[r],
+                   response_se = obs_tsls_est$wNEO$MR_se[r],
+                   response_P = obs_tsls_est$wNEO$MR_P[r])
+temp$outcome = gsub("_f","",temp$outcome )
+###
+PearsonR_fp = cor.test(temp$fasting, temp$postprandial)$estimate
+PearsonR_fp = formatC(PearsonR, digits = 3)
+
+PearsonR_fr = cor.test(temp$fasting, temp$response)$estimate
+PearsonR_fr = formatC(PearsonR_fr, digits = 3)
+
+PearsonR_pr = cor.test(temp$postprandial, temp$response)$estimate
+PearsonR_pr = formatC(PearsonR_pr, digits = 3)
+
+#### difference between point estimates
+z = t( sapply(1:nrow(temp), function(i){
+  ztest(beta1 = temp[i,2], se1 = temp[i,3] , beta2 = temp[i,5] , se2 = temp[i,6] )  
+}) )
+temp$ztest_P = z[,2]
+w = which( z[,2]< 0.05 )
+q = which( z[,2]< 0.05/nrow(z) )
+temp$sig_dif = "P>0.05"
+temp$sig_dif[w] = "P<0.05"
+temp$sig_dif[q] = "P<0.05/229"
+temp$sig_dif = factor(temp$sig_dif, levels = c("P>0.05", "P<0.05", "P<0.05/229" )[3:1] )
+###
+pcol = RColorBrewer::brewer.pal(3, "Set1")
+
+###
+p2 = temp %>% ggplot(aes(x = fasting, y = postprandial)) +
+  geom_vline(xintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "grey50") +
+  geom_smooth( method = "lm", formula = y ~ x , color = "black", size = 3) +
+  geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "red") +
+  ###
+  geom_point( aes(color = as.factor(sig_dif)),
+              size = 3, alpha = 0.5) +
+  ggrepel::geom_text_repel( data = temp %>% filter(sig_dif != "P>0.05") , 
+                  aes(label=outcome), 
+                  min.segment.length = 0.02,
+                  box.padding = 0.2, nudge_y = -0.005, color = pcol[1] ) +
+  ggrepel::geom_text_repel( data = temp %>% filter( fasting > 0.065 &  postprandial > 0.065 & fasting>postprandial) , 
+                  aes(label=outcome), 
+                  min.segment.length = 0.01,
+                  box.padding = 0.3, 
+                  nudge_y = -0.03, nudge_x = 0.015 ) +
+  ggrepel::geom_text_repel( data = temp %>% filter( fasting > 0.065 &  postprandial > 0.065 & fasting<postprandial) , 
+                  aes(label=outcome), 
+                  min.segment.length = 0.01,
+                  box.padding = 0.3, 
+                  nudge_y = 0.025, nudge_x = -0.01 ) +
+  ggrepel::geom_text_repel( data = temp %>% filter( fasting < -0.065 &  postprandial < -0.065 & fasting>postprandial) , 
+                  aes(label=outcome), 
+                  min.segment.length = 0.01,
+                  box.padding = 0.3,
+                  nudge_y = -0.015, nudge_x = 0.015 ) +
+  ggrepel::geom_text_repel( data = temp %>% filter( fasting < -0.065 &  postprandial < -0.065 & fasting<postprandial) , 
+                  aes(label=outcome), 
+                  min.segment.length = 0.01,
+                  box.padding = 0.3,
+                  nudge_y = 0.02, nudge_x = -0.01 ) +
+  scale_shape_manual(values = c(1, 19)) +
+  scale_color_brewer(palette="Set1") +
+  labs(color = paste0("estimates dif."),
+       subtitle = paste0( "Pearson's r = ", PearsonR ) ) +
+  theme_bw() +
+  expand_limits(x=c(-0.125,0.125), y=c(-0.125,0.125)) 
+
+p2
+```
+
+
+
+
+## Fasting MR effect estimates ranked 
+
+```{r}
+df %>% filter(dietary_state == "fasting") %>% 
+  filter( MR_P < 0.05/43) %>% 
+  arrange( MR_P ) %>% 
+  dplyr::select(class,  MR_beta, MR_P) %>% 
+  kable() %>% 
+  kable_classic()
+```
+
+
+### average fasting effect by metabolite class
+
+```{r}
+class_means = df %>% 
+  filter(dietary_state == "fasting") %>% 
+  group_by(class) %>% 
+  summarise( mean = mean( MR_beta ), 
+             min =  min( MR_beta ),
+             max =  max( MR_beta ),
+             n = length(abs(MR_beta))  ) %>% 
+  arrange( desc(abs(mean)) )
+
+class_means %>%
+  kable() %>% 
+  kable_classic()
+```
+
+
+## postprandial MR effect estimates ranked 
+
+```{r}
+df %>% filter(dietary_state == "postprandial") %>% 
+  filter( MR_P < 0.05/43) %>% 
+  arrange( MR_P ) %>% 
+  dplyr::select( class, MR_beta, MR_P) %>% 
+  kable() %>% 
+  kable_classic()
+```
+
+
+### average postprandial effect by metabolite class
+
+```{r}
+class_means = df %>% 
+  filter(dietary_state == "postprandial") %>% 
+  group_by(class) %>% 
+  summarise( mean = mean( MR_beta ), 
+             min =  min( MR_beta ),
+             max =  max( MR_beta ),
+             n = length(abs(MR_beta))  ) %>% 
+  arrange( desc(abs(mean)) )
+
+class_means %>%
+  kable() %>% 
+  kable_classic()
+```
+
+
+## Derive un-transformed effect estiamtes
+
+```{r}
+shapiro.test( sample( mydata$ala_r, 5000 ) )
+```
+
+
+```{r}
+shapiro.test( sample( mydata$leu_r, 5000 ) )
+```
+
+
+
+```{r}
+traits = c("ala_r","leu_r")
+
+untransformed_ests = t( sapply(traits, function(trait){
+  obsmr( wdata = mydata,
+            outcome = trait,
+            exposure = "bmi",
+            instrument = "Yengo_Weighted_GRS",
+            covariates = c("visit_date","subpop","age","sex"),
+            weights = "pweight",
+            rnt_outcome = FALSE,
+            outlier_method = "iqr",
+            outlier_cutoff = 5,
+            messages = TRUE)
+}) )
+
+untransformed_ests = as.data.frame(untransformed_ests)
+```
+
+```{r}
+untransformed_ests %>% 
+  dplyr::select(Obs_beta, Obs_se, Obs_P, MR_beta, MR_se, MR_P) %>%
+  knitr::kable() %>% kableExtra::kable_classic()
+```
+
+
+
